@@ -1,0 +1,145 @@
+.wrapper {
+  position: relative;
+}
+
+.graph {
+  width: 100%;
+  height: 70vh;
+  max-height: 600px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.edge {
+  stroke: var(--border);
+  stroke-width: 2;
+  opacity: 0;
+  animation: fade-in 300ms ease-out forwards;
+}
+
+/* An edge between two visited nodes — the walker's actual trail, distinct from the merely-seen periphery. */
+.traveledEdge {
+  stroke: var(--accent-border);
+  stroke-width: 2.5;
+}
+
+.node {
+  /* A soft accent tint, not blank — the "frontier" nodes you can see but haven't stood on yet. */
+  fill: var(--accent-bg);
+  stroke: var(--border);
+  stroke-width: 2;
+  opacity: 0;
+  animation: fade-in 300ms ease-out forwards;
+  transition: fill 150ms ease, stroke 150ms ease;
+}
+
+/* Base color for visited nodes — a muted violet with enough chroma for the per-node hue-rotate
+   below to actually do something (a flat gray has no hue to rotate). Each visited node gets a
+   slightly different cast so a big, mostly-explored graph reads as varied rather than monochrome. */
+.visited {
+  fill: #8b7aa8;
+}
+
+.start {
+  stroke: var(--text-h);
+}
+
+.goal {
+  fill: var(--accent-bg);
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.currentNode {
+  stroke: var(--accent);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px var(--accent-border));
+}
+
+/* Strategy visualization — which nodes a strategy is currently tracking. Declared after
+   .visited/.goal so a highlighted node's fill always wins over those. */
+.inMemory {
+  fill: #22c55e;
+}
+
+.inStack {
+  fill: #f59e0b;
+}
+
+.bestCandidate {
+  fill: #3b82f6;
+}
+
+.frontier {
+  fill: #14b8a6;
+}
+
+.plannedPath {
+  fill: #ec4899;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.burstRing {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 4;
+  opacity: 0;
+  animation: burst 1.8s ease-out forwards;
+}
+
+@keyframes burst {
+  0% {
+    r: 10;
+    stroke-width: 4;
+    opacity: 0.9;
+  }
+  100% {
+    r: 100;
+    stroke-width: 0.5;
+    opacity: 0;
+  }
+}
+
+.banner {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  padding: 8px 20px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  box-shadow: 0 4px 24px var(--accent-border);
+  animation: banner-fade 1.8s ease-in-out forwards;
+}
+
+@keyframes banner-fade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.9);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.95);
+  }
+}

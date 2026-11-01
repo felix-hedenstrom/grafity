@@ -1,0 +1,24 @@
+.reset {
+  font: inherit;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.reset:hover {
+  border-color: var(--text-h);
+  color: var(--text-h);
+}
+
+.confirm {
+  font: inherit;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid #e5484d;
+  background: rgba(229, 72, 77, 0.12);
+  color: #e5484d;
+  cursor: pointer;
+}

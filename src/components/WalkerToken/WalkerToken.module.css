@@ -1,0 +1,10 @@
+.walker {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 4px var(--accent-border));
+  transition: cx 300ms ease, cy 300ms ease;
+}
+
+.reverse {
+  fill: #ec4899;
+  filter: drop-shadow(0 0 4px rgba(236, 72, 153, 0.5));
+}
