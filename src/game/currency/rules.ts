@@ -7,17 +7,17 @@ export const GOAL_REWARD_PER_NODE = 10
 
 /** Discovery Bonus is repeatable — each purchase raises the discovery reward rate by another 20%, compounding, uncapped. */
 export const DISCOVERY_BONUS_PERCENT_PER_LEVEL = 0.2
-export const DISCOVERY_BONUS_BASE_COST = 150
+export const DISCOVERY_BONUS_BASE_COST = 15
 export const DISCOVERY_BONUS_COST_GROWTH = 1.2
 
 /** Revisit Bonus is repeatable — each purchase raises the revisit reward rate by another 20%, compounding, uncapped. */
 export const REVISIT_BONUS_PERCENT_PER_LEVEL = 0.2
-export const REVISIT_BONUS_BASE_COST = 150
+export const REVISIT_BONUS_BASE_COST = 15
 export const REVISIT_BONUS_COST_GROWTH = 1.2
 
 /** Exit Bonus is repeatable — each purchase raises the exit reward rate by another 20%, compounding, uncapped. */
 export const EXIT_BONUS_PERCENT_PER_LEVEL = 0.2
-export const EXIT_BONUS_BASE_COST = 300
+export const EXIT_BONUS_BASE_COST = 30
 export const EXIT_BONUS_COST_GROWTH = 1.25
 
 export function computeDiscoveryRewardPerNode(discoveryBonusLevel: number): number {
@@ -45,7 +45,7 @@ export const AMPLIFIER_COST_GROWTH = 1.25
 
 /** Insight Multiplier is repeatable — each purchase multiplies ALL Insight earned (discovery, revisit, and exit rewards alike) by another 15%, compounding, uncapped. */
 export const INSIGHT_MULTIPLIER_PERCENT_PER_LEVEL = 0.15
-export const INSIGHT_MULTIPLIER_BASE_COST = 600
+export const INSIGHT_MULTIPLIER_BASE_COST = 60
 export const INSIGHT_MULTIPLIER_COST_GROWTH = 1.3
 
 /** How much every Insight reward is scaled by right now (1 = no bonus yet) — applied once, where currency is actually credited, rather than threaded through every reward calculation. */

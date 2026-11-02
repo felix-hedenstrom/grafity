@@ -211,7 +211,7 @@ export const DISCOVERY_BONUS_UPGRADE_INFO: RepeatableUpgradeInfo = {
   description: `+${discoveryBonusPercent}% Insight per newly discovered node per purchase, compounding.`,
   baseCost: DISCOVERY_BONUS_BASE_COST,
   costGrowth: DISCOVERY_BONUS_COST_GROWTH,
-  minLevel: 15,
+  minLevel: 5,
 }
 
 const revisitBonusPercent = Math.round(REVISIT_BONUS_PERCENT_PER_LEVEL * 100)
@@ -222,7 +222,7 @@ export const REVISIT_BONUS_UPGRADE_INFO: RepeatableUpgradeInfo = {
   description: `+${revisitBonusPercent}% Insight per revisit per purchase, compounding.`,
   baseCost: REVISIT_BONUS_BASE_COST,
   costGrowth: REVISIT_BONUS_COST_GROWTH,
-  minLevel: 15,
+  minLevel: 10,
 }
 
 const exitBonusPercent = Math.round(EXIT_BONUS_PERCENT_PER_LEVEL * 100)
@@ -233,7 +233,7 @@ export const EXIT_BONUS_UPGRADE_INFO: RepeatableUpgradeInfo = {
   description: `+${exitBonusPercent}% Insight on exit per purchase, compounding.`,
   baseCost: EXIT_BONUS_BASE_COST,
   costGrowth: EXIT_BONUS_COST_GROWTH,
-  minLevel: 25,
+  minLevel: 15,
 }
 
 const insightMultiplierPercent = Math.round(INSIGHT_MULTIPLIER_PERCENT_PER_LEVEL * 100)
@@ -244,7 +244,7 @@ export const INSIGHT_MULTIPLIER_UPGRADE_INFO: RepeatableUpgradeInfo = {
   description: `+${insightMultiplierPercent}% Insight earned per purchase, compounding.`,
   baseCost: INSIGHT_MULTIPLIER_BASE_COST,
   costGrowth: INSIGHT_MULTIPLIER_COST_GROWTH,
-  minLevel: 40,
+  minLevel: 20,
 }
 
 /** Extra Searcher is repeatable — each purchase adds one more walker running the active strategy, all sharing discovery and a pooled Node Memory window. Doesn't affect Bidirectional Search, which is always exactly its own two. */
