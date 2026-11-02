@@ -6,59 +6,149 @@
   width: 100%;
   height: 70vh;
   max-height: 600px;
-  background: var(--code-bg);
+  /* Night sky is a deliberate, fixed world — it doesn't follow the app's light/dark toggle,
+     the same way a letterpress invitation or neon arcade screen wouldn't. */
+  background: radial-gradient(ellipse at 28% 18%, #1c2a66 0%, #0c1130 55%, #04050f 100%);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
 
+.skyLayer {
+  pointer-events: none;
+}
+
+.dustStar {
+  fill: #cfe0ff;
+  animation-name: dustTwinkle;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+
+@keyframes dustTwinkle {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .edge {
-  stroke: var(--border);
-  stroke-width: 2;
+  stroke: #5b6590;
+  stroke-width: 1.1;
+  stroke-dasharray: 1.5 6;
+  stroke-linecap: round;
   opacity: 0;
   animation: fade-in 300ms ease-out forwards;
 }
 
-/* An edge between two visited nodes — the walker's actual trail, distinct from the merely-seen periphery. */
+/* An edge between two visited nodes — the walker's actual trail, distinct from the merely-seen
+   periphery. Solid and lit, unlike the dotted "possible route" look of .edge. */
 .traveledEdge {
-  stroke: var(--accent-border);
-  stroke-width: 2.5;
+  stroke: #eaf6ff;
+  stroke-width: 2.4;
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 4px rgba(234, 246, 255, 0.85));
+}
+
+/* The moment an edge is actually being crossed: a laser that draws itself in at exactly the
+   hop's real travel time, via stroke-dashoffset animating from --len (fully hidden, over the
+   dotted base) to 0 (fully drawn). Once the hop commits, this unmounts and .traveledEdge (already
+   visually identical to its end state) takes over seamlessly. */
+.revealOverlay {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
+  animation-name: edgeReveal;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes edgeReveal {
+  from {
+    stroke-dashoffset: var(--len);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .revealOverlay {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .dustStar {
+    animation: none;
+  }
 }
 
 .node {
-  /* A soft accent tint, not blank — the "frontier" nodes you can see but haven't stood on yet. */
-  fill: var(--accent-bg);
-  stroke: var(--border);
-  stroke-width: 2;
+  /* A dim, seen-but-unvisited star — not blank. */
+  fill: #7a86b8;
+  stroke: none;
   opacity: 0;
   animation: fade-in 300ms ease-out forwards;
-  transition: fill 150ms ease, stroke 150ms ease;
+  transition: fill 150ms ease;
 }
 
-/* Base color for visited nodes — a muted violet with enough chroma for the per-node hue-rotate
-   below to actually do something (a flat gray has no hue to rotate). Each visited node gets a
-   slightly different cast so a big, mostly-explored graph reads as varied rather than monochrome. */
+/* Three layers of an actual glowing star, not one circle with a token blur filter standing in
+   for all of it: a wide, barely-there outer glow; a tighter, brighter mid glow; a small, crisp,
+   fully-opaque core. Blur amounts are set inline per-node (proportional to that node's own
+   radius) in GraphView.tsx — opacity here is the only part that's a fixed ratio between layers. */
+.starOuterGlow {
+  opacity: 0.22;
+}
+
+.starMidGlow {
+  opacity: 0.5;
+}
+
+.starCore {
+  opacity: 1;
+}
+
+/* Base color for visited nodes — enough chroma for the per-node hue-rotate below to actually do
+   something (a flat gray has no hue to rotate). Each visited node gets a slightly different cast
+   so a big, mostly-explored graph reads as varied rather than monochrome. */
 .visited {
-  fill: #8b7aa8;
+  fill: #a9b4e0;
 }
 
+/* Start/goal: color-coded beacons, deliberately outside the normal fill-color language (they're
+   sized outside the degree rule too, in GraphView.tsx) — always the two most visible stars. */
 .start {
-  stroke: var(--text-h);
+  fill: #2ee67d;
 }
 
 .goal {
-  fill: var(--accent-bg);
-  stroke: var(--accent);
-  stroke-width: 3;
+  fill: #ff4d4d;
+}
+
+/* The sparkle glyph (see #star-sparkle in GraphView.tsx) — only start/goal get one, so it reads
+   as a deliberate glint rather than clutter on every star. */
+.sparkleStart {
+  fill: #9dffce;
+  opacity: 0.9;
+}
+
+.sparkleGoal {
+  fill: #ffc2c2;
+  opacity: 0.9;
 }
 
 .currentNode {
-  stroke: var(--accent);
-  stroke-width: 3;
-  filter: drop-shadow(0 0 6px var(--accent-border));
+  stroke: #ffffff;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9));
 }
 
 /* Strategy visualization — which nodes a strategy is currently tracking. Declared after
-   .visited/.goal so a highlighted node's fill always wins over those. */
+   .visited/.goal so a highlighted node's fill always wins over those. Same hues as before the
+   reskin — unchanged, since these colors are gameplay-critical and already learned. */
 .inMemory {
   fill: #22c55e;
 }

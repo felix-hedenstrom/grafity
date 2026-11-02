@@ -1,16 +1,227 @@
-.walker {
-  fill: var(--accent);
-  filter: drop-shadow(0 0 4px var(--accent-border));
-  transition-property: cx, cy;
+.position {
+  transition-property: transform;
   transition-timing-function: linear;
 }
 
-.reverse {
-  fill: #ec4899;
-  filter: drop-shadow(0 0 4px rgba(236, 72, 153, 0.5));
+.heading {
+  /* Only matters for .discoveringSpin below (a pure rotate with no translate component).
+     Without transform-box, transform-origin: center would resolve to the center of the whole
+     SVG viewBox, not this element's own shapes — the spin would swing around the entire canvas
+     instead of in place. fill-box makes "center" mean this element's own bounding box instead. */
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
-.main {
-  fill: #facc15;
-  filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.6));
+/* Main ship, discovering: a real orbit around the node — translate+rotate every step, so the
+   rotation happens around each step's own freshly-translated local origin and never needs
+   transform-origin at all (same reason this needed no fill-box trick in the original mockup).
+   Nose stays tangent to the circle throughout. 8 steps around a circle whose radius is driven by
+   --orbit-r (set per-instance from the actual node's rendered size, see WalkerToken.tsx) — a
+   degree-4 hub's orbit is visibly wider than a plain degree-2 star's, instead of one fixed size
+   that either clips through big stars or looks lost next to small ones. Each step multiplies
+   --orbit-r by that angle's cos/sin so the circle's actual radius can vary per instance while
+   the keyframe shape itself stays static CSS. */
+@keyframes orbitInPlace {
+  0% {
+    transform: translate(var(--orbit-r, 26px), 0px) rotate(90deg);
+  }
+  12.5% {
+    transform: translate(calc(var(--orbit-r, 26px) * 0.7071), calc(var(--orbit-r, 26px) * 0.7071)) rotate(135deg);
+  }
+  25% {
+    transform: translate(0px, var(--orbit-r, 26px)) rotate(180deg);
+  }
+  37.5% {
+    transform: translate(calc(var(--orbit-r, 26px) * -0.7071), calc(var(--orbit-r, 26px) * 0.7071)) rotate(225deg);
+  }
+  50% {
+    transform: translate(calc(var(--orbit-r, 26px) * -1), 0px) rotate(270deg);
+  }
+  62.5% {
+    transform: translate(calc(var(--orbit-r, 26px) * -0.7071), calc(var(--orbit-r, 26px) * -0.7071)) rotate(315deg);
+  }
+  75% {
+    transform: translate(0px, calc(var(--orbit-r, 26px) * -1)) rotate(360deg);
+  }
+  87.5% {
+    transform: translate(calc(var(--orbit-r, 26px) * 0.7071), calc(var(--orbit-r, 26px) * -0.7071)) rotate(405deg);
+  }
+  100% {
+    transform: translate(var(--orbit-r, 26px), 0px) rotate(450deg);
+  }
+}
+
+.discoveringOrbit {
+  animation: orbitInPlace 1.1s linear infinite;
+}
+
+/* UFO sub-ships, discovering: spin in place — two full turns so it's unmistakably
+   "investigating" rather than just jittering. Relies on .heading's fill-box fix above. */
+@keyframes spinInPlace {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(720deg);
+  }
+}
+
+.discoveringSpin {
+  animation: spinInPlace 1.1s linear infinite;
+}
+
+/* ---------- main ship: a dart-hulled rocket ---------- */
+
+.hull {
+  fill: #ff8c3a;
+  stroke: #160a26;
+  stroke-width: 1;
+}
+
+.hullHalo {
+  fill: #01030a;
+  opacity: 0.5;
+  filter: blur(1.2px);
+}
+
+.cockpitOuter {
+  fill: #ffffff;
+}
+
+.cockpitInner {
+  fill: #6ee7ff;
+}
+
+@keyframes exhaustFlickerOuter {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  40% {
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes exhaustFlickerCore {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  30% {
+    opacity: 1;
+  }
+  65% {
+    opacity: 0.5;
+  }
+}
+
+.exhaustOuter {
+  fill: rgba(255, 216, 154, 0.75);
+  animation: exhaustFlickerOuter 1.3s ease-in-out infinite;
+}
+
+.exhaustCore {
+  fill: rgba(255, 246, 224, 0.9);
+  animation: exhaustFlickerCore 0.8s ease-in-out infinite;
+}
+
+/* Hides the exhaust while discovering without unmounting it — unmounting would shrink the
+   group's fill-box and shift the rotation pivot set on .heading. */
+.exhaustHidden {
+  opacity: 0;
+  animation: none;
+}
+
+/* ---------- sub-ships: UFO scouts with a green alien riding in the dome ---------- */
+
+.saucer {
+  fill: #c7cbe0;
+  stroke: #5a5f7a;
+  stroke-width: 0.5;
+}
+
+.saucerShadow {
+  fill: #8d93ad;
+  opacity: 0.5;
+}
+
+.dome {
+  fill: #bfe9ff;
+  opacity: 0.55;
+  stroke: #6ee7ff;
+  stroke-width: 0.4;
+}
+
+.alienHead {
+  fill: #5be37a;
+}
+
+.alienEye {
+  fill: #06240f;
+}
+
+@keyframes rimTwinkle {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.rimLightA,
+.rimLightB,
+.rimLightC {
+  animation: rimTwinkle 1.6s ease-in-out infinite;
+}
+
+/* forward searchers: cool, neutral rim lights */
+.rimLightA {
+  fill: #ff4d4d;
+  animation-delay: 0.1s;
+}
+
+.rimLightB {
+  fill: #ffe066;
+  animation-delay: 0.6s;
+}
+
+.rimLightC {
+  fill: #6ee7ff;
+  animation-delay: 1.1s;
+}
+
+/* reverse (bidirectional's goal-side walker): pink/magenta tint, echoing its old solid-pink
+   identity so it's still readable as a distinct role under the shared UFO shape. */
+.reverse .dome {
+  fill: #ffd4ea;
+  stroke: #f472b6;
+}
+
+.reverse .rimLightA {
+  fill: #f472b6;
+}
+
+.reverse .rimLightB {
+  fill: #c084fc;
+}
+
+.reverse .rimLightC {
+  fill: #ec4899;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .discoveringOrbit,
+  .discoveringSpin,
+  .exhaustOuter,
+  .exhaustCore,
+  .rimLightA,
+  .rimLightB,
+  .rimLightC {
+    animation: none !important;
+  }
 }

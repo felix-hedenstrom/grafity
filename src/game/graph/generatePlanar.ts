@@ -17,7 +17,7 @@ const WARP_STRENGTH = 0.5
 const WARP_FALLOFF_RATIO = 0.25
 
 /** Target ratio between a graph's single longest and single shortest edge weight, after reshapeWeights. */
-const WEIGHT_RATIO = 20
+const WEIGHT_RATIO = 40
 /** How aggressively reshapeWeights compresses the middle of the distribution and stretches the tails — higher means the WEIGHT_RATIO extremes are reached by fewer, more extreme edges, while more of the pack stays clustered near the median. */
 const WEIGHT_TAIL_EXPONENT = 4
 
