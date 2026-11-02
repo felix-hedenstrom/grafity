@@ -39,7 +39,8 @@ import { breadthFirstSearch } from '../strategies/breadthFirstSearch'
 import { depthFirstSearch } from '../strategies/depthFirstSearch'
 import { dijkstra } from '../strategies/dijkstra'
 import { greedyFrontier } from '../strategies/greedyFrontier'
-import { leastVisited } from '../strategies/leastVisited'
+import { leastVisitedPath } from '../strategies/leastVisitedPath'
+import { leastVisitedStar } from '../strategies/leastVisitedStar'
 import {
   DEEP_MEMORY_BASE_COST,
   DEEP_MEMORY_COST_GROWTH,
@@ -57,59 +58,67 @@ export const DEFAULT_STRATEGY_ID = randomWalk.id
 /** Unlock a traversal strategy — mutually exclusive, picked via the shop's Use/Active toggle. Ordered by cost, which is also unlock order under progressive reveal. */
 export const UPGRADES: UpgradeDefinition[] = [
   {
-    id: 'least-visited',
-    name: 'Least Visited',
+    id: 'least-visited-star',
+    name: 'Least Visited*',
     description: 'Always heads toward whichever neighbor it has stepped on the fewest times so far — spreads exploration out instead of clumping.',
     cost: 150,
     minLevel: 15,
-    strategyId: leastVisited.id,
+    strategyId: leastVisitedStar.id,
+  },
+  {
+    id: 'least-visited-path',
+    name: 'Least Visited Path',
+    description: 'Always heads toward whichever neighbor is reachable via the edge it has crossed the fewest times — tracks specific routes rather than nodes, so two different paths into the same place are never treated as the same thing.',
+    cost: 300,
+    minLevel: 30,
+    strategyId: leastVisitedPath.id,
   },
   {
     id: 'bfs',
     name: 'Breadth-First Search',
     description: 'Always heads toward whichever unexplored node is fewest hops away, ignoring edge weight entirely — explores outward in rings.',
-    cost: 250,
-    minLevel: 20,
+    cost: 650,
+    minLevel: 50,
     strategyId: breadthFirstSearch.id,
   },
   {
     id: 'dfs',
     name: 'Depth-First Search',
     description: 'Systematically explores one branch at a time and backtracks properly on dead ends.',
-    cost: 400,
-    minLevel: 30,
+    cost: 1100,
+    minLevel: 80,
     strategyId: depthFirstSearch.id,
   },
   {
     id: 'greedy-frontier',
     name: 'Greedy Frontier',
     description: 'Always heads toward whichever neighbor opens up the most unexplored territory.',
-    cost: 900,
-    minLevel: 50,
+    cost: 2400,
+    minLevel: 130,
     strategyId: greedyFrontier.id,
   },
   {
     id: 'dijkstra',
     name: 'Dijkstra',
     description: "Weighs each edge by its real cost rather than counting hops — finds the genuinely cheapest route to whatever's nearest unexplored.",
-    cost: 1800,
-    minLevel: 75,
+    cost: 5000,
+    minLevel: 210,
     strategyId: dijkstra.id,
   },
   {
     id: 'a-star',
     name: 'A*',
     description: "The walker can see the exit now — beelines straight for it along the cheapest weighted route, using the graph's layout as a heuristic instead of exploring outward first.",
-    cost: 3600,
-    minLevel: 120,
+    cost: 10200,
+    minLevel: 340,
     strategyId: aStar.id,
   },
   {
     id: 'bidirectional',
     name: 'Bidirectional Search',
     description: 'Two walkers — one from the start, one from the exit — searching toward each other until they meet in the middle. Always exactly two, from opposite ends.',
-    cost: 7200,
-    minLevel: 200,
+    cost: 20000,
+    minLevel: 550,
     strategyId: bidirectionalSearch.id,
   },
 ]

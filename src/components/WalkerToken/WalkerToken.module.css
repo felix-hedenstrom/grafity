@@ -7,12 +7,15 @@
 }
 
 .heading {
-  /* The heading rotate above (a pure rotate with no translate component) needs this: without
-     transform-box, transform-origin: center would resolve to the center of the whole SVG
-     viewBox, not this element's own shapes — the ship would swing around the entire canvas
-     instead of turning in place. fill-box makes "center" mean this element's own bounding box. */
-  transform-box: fill-box;
-  transform-origin: center;
+  /* Rotate around this group's own local (0,0) — the node anchor point set by the outer
+     .position translate — not the bounding box of its shapes. fill-box/center looked
+     appealing but the rocket's shapes aren't symmetric around (0,0) (the exhaust flame
+     extends much further in -x than the hull does in +x), so that pivot sat ~4 units off
+     the anchor and the ship visibly swung off the travel line as it turned to face each new
+     edge. transform-origin as an explicit length (not a percentage) is in this element's own
+     user-space coordinates, so 0px 0px lands exactly on local (0,0) regardless of shape
+     bounds, with no fill-box needed. */
+  transform-origin: 0px 0px;
   /* Covers the moment discoveringOrbit is removed: without this, the ship's heading snaps from
      wherever it was mid-loop straight to rotate(angle). With it, that drop gets picked up as a
      transition instead and eases into the travel heading. */

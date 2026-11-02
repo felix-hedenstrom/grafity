@@ -32,9 +32,9 @@ function pickLeastVisited(ctx: StrategyContext): NodeId[] {
 }
 
 /** Leans harder on the walker's own history than other strategies, so it gets a bigger cut of Node Memory to work with. */
-export const leastVisited: TraversalStrategy = {
-  id: 'least-visited',
-  name: 'Least Visited',
+export const leastVisitedStar: TraversalStrategy = {
+  id: 'least-visited-star',
+  name: 'Least Visited*',
   memoryMultiplier: 2,
   chooseNextNode(ctx) {
     return pickRandom(Math.random, pickLeastVisited(ctx))

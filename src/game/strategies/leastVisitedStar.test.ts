@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createDiscovery } from '../discovery/reveal'
 import type { Graph } from '../graph/types'
 import { createWalker } from '../walker/walkerLogic'
-import { leastVisited } from './leastVisited'
+import { leastVisitedStar } from './leastVisitedStar'
 import type { StrategyContext } from './types'
 
 function hubGraph(): Graph {
@@ -16,9 +16,9 @@ function hubGraph(): Graph {
   }
 }
 
-describe('leastVisited', () => {
+describe('leastVisitedStar', () => {
   it('has a 2x memory multiplier', () => {
-    expect(leastVisited.memoryMultiplier).toBe(2)
+    expect(leastVisitedStar.memoryMultiplier).toBe(2)
   })
 
   it('prefers a neighbor visited fewer times over ones visited more', () => {
@@ -28,7 +28,7 @@ describe('leastVisited', () => {
     const ctx: StrategyContext = { graph, discovery: createDiscovery(graph, 'hub'), walker, memory: undefined, memoryLevel: 0 }
 
     for (let i = 0; i < 100; i++) {
-      expect(leastVisited.chooseNextNode(ctx)).toBe('c')
+      expect(leastVisitedStar.chooseNextNode(ctx)).toBe('c')
     }
   })
 
@@ -38,7 +38,7 @@ describe('leastVisited', () => {
     const ctx: StrategyContext = { graph, discovery: createDiscovery(graph, 'hub'), walker, memory: undefined, memoryLevel: 0 }
 
     const seen = new Set<string>()
-    for (let i = 0; i < 200; i++) seen.add(leastVisited.chooseNextNode(ctx))
+    for (let i = 0; i < 200; i++) seen.add(leastVisitedStar.chooseNextNode(ctx))
     expect(seen).toEqual(new Set(['b', 'c']))
   })
 
@@ -48,6 +48,6 @@ describe('leastVisited', () => {
     const walker = { ...createWalker('hub'), path: ['hub', 'a', 'hub', 'a', 'hub', 'b', 'hub', 'c', 'hub'] }
     const ctx: StrategyContext = { graph, discovery: createDiscovery(graph, 'hub'), walker, memory: undefined, memoryLevel: 1 }
 
-    expect(leastVisited.chooseNextNode(ctx)).toBe('b')
+    expect(leastVisitedStar.chooseNextNode(ctx)).toBe('b')
   })
 })
