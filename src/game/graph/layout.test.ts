@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Graph } from './types'
-import { computeDynamicViewSize, computeGraphBounds, computeViewBounds, MAX_VIEW_SIZE, MIN_VIEW_SIZE } from './layout'
+import { computeDynamicViewSize, computeGraphBounds, computeViewBounds, MAX_VIEW_SIZE, MIN_GRAPH_VIEW_SIZE, MIN_VIEW_SIZE } from './layout'
 
 /** A minimal graph with nodes placed wherever the caller wants — computeGraphBounds/computeViewBounds only care about node.x/y, not how a graph got generated. */
 function graphWithPositions(positions: { id: string; x: number; y: number }[]): Graph {
@@ -25,20 +25,20 @@ describe('computeViewBounds', () => {
     expect(view).toEqual(full)
   })
 
-  it('pads a graph smaller than MIN_VIEW_SIZE out to MIN_VIEW_SIZE, centered on the graph', () => {
+  it('pads a graph smaller than MIN_GRAPH_VIEW_SIZE out to MIN_GRAPH_VIEW_SIZE, centered on the graph', () => {
     const graph = graphWithPositions([
       { id: 'a', x: 0, y: 0 },
-      { id: 'b', x: 100, y: 50 },
-      { id: 'c', x: 50, y: 100 },
+      { id: 'b', x: 10, y: 5 },
+      { id: 'c', x: 5, y: 10 },
     ])
     const full = computeGraphBounds(graph)
     const view = computeViewBounds(graph, 0, 0, 900)
-    expect(view.width).toBe(MIN_VIEW_SIZE)
-    expect(view.height).toBe(MIN_VIEW_SIZE)
+    expect(view.width).toBe(MIN_GRAPH_VIEW_SIZE)
+    expect(view.height).toBe(MIN_GRAPH_VIEW_SIZE)
     const graphCenterX = full.minX + full.width / 2
     const graphCenterY = full.minY + full.height / 2
-    expect(view.minX).toBeCloseTo(graphCenterX - MIN_VIEW_SIZE / 2, 5)
-    expect(view.minY).toBeCloseTo(graphCenterY - MIN_VIEW_SIZE / 2, 5)
+    expect(view.minX).toBeCloseTo(graphCenterX - MIN_GRAPH_VIEW_SIZE / 2, 5)
+    expect(view.minY).toBeCloseTo(graphCenterY - MIN_GRAPH_VIEW_SIZE / 2, 5)
   })
 
   it('caps each dimension at maxSize and centers on the focus point once the graph outgrows it', () => {

@@ -27,8 +27,10 @@ export function computeGraphBounds(graph: Graph): GraphBounds {
 
 /** Past this size (in layout units, same scale as node spacing), fitting the whole graph in view shrinks node circles to near-invisible dots — better to show a fixed-size window instead. */
 export const MAX_VIEW_SIZE = 1600
-/** Smallest the camera window ever shrinks to, even with no other walkers to fit in frame — keeps nodes a comfortable, legible size. */
+/** Smallest the camera window ever shrinks to, even with no other walkers to fit in frame — keeps nodes a comfortable, legible size. Only used for the walker-proximity zoom (computeDynamicViewSize) and the walker scale it feeds into — NOT for padding a small whole-graph view, which uses MIN_GRAPH_VIEW_SIZE instead, since graph sizes now range far below this (level-7 graphs are far smaller than a few walkers' proximity window ever needs to be). */
 export const MIN_VIEW_SIZE = 500
+/** Smallest the whole-graph view ever pads out to when the graph itself is smaller than this — much lower than MIN_VIEW_SIZE so an early, naturally tiny graph isn't zoomed out several times past its real size. */
+export const MIN_GRAPH_VIEW_SIZE = 100
 /** How many of the main walker's nearest companions the camera tries to keep in frame alongside it. */
 const VISIBLE_OTHER_WALKERS = 2
 /** Multiplies the span needed to just barely fit the included walkers, so they land comfortably inside the window instead of right at its edge. */
@@ -62,12 +64,12 @@ export function computeDynamicViewSize(mainPos: { x: number; y: number }, otherP
 export function computeViewBounds(graph: Graph, focusX: number, focusY: number, maxSize = MAX_VIEW_SIZE): GraphBounds {
   const full = computeGraphBounds(graph)
 
-  const width = Math.min(Math.max(full.width, MIN_VIEW_SIZE), maxSize)
-  const height = Math.min(Math.max(full.height, MIN_VIEW_SIZE), maxSize)
+  const width = Math.min(Math.max(full.width, MIN_GRAPH_VIEW_SIZE), maxSize)
+  const height = Math.min(Math.max(full.height, MIN_GRAPH_VIEW_SIZE), maxSize)
 
-  // Three cases: the graph is small enough to pad out to MIN_VIEW_SIZE (center on the graph
-  // itself, so it gets even breathing room on all sides), it fits within maxSize as-is (use its
-  // own bounds directly), or it's bigger than maxSize (window centered on the focus/walker).
+  // Three cases: the graph is small enough to pad out to MIN_GRAPH_VIEW_SIZE (center on the
+  // graph itself, so it gets even breathing room on all sides), it fits within maxSize as-is
+  // (use its own bounds directly), or it's bigger than maxSize (window centered on the focus/walker).
   const rawMinX = width > full.width ? full.minX + full.width / 2 - width / 2 : full.width <= maxSize ? full.minX : focusX - width / 2
   const rawMinY = height > full.height ? full.minY + full.height / 2 - height / 2 : full.height <= maxSize ? full.minY : focusY - height / 2
 

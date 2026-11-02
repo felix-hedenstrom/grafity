@@ -21,11 +21,27 @@ export const CLARITY_SPACING_MULTIPLIER = 1.6
 export const CLARITY_COST = 1500
 export const CLARITY_MAX_LEVEL = 20
 
-const BASE_POINT_SPACING = 60
+/** Point spacing at the lowest possible graph size (SPACING_SCALE_REFERENCE_NODE_COUNT) — the
+ * anchor every other level's spacing scales up from. */
+const SPACING_AT_LEVEL_7 = 21
+/** The nodeCount spacingScaleForNodeCount is anchored to 1x at — matches useProgressionStore's
+ * STARTING_GRAPH_NODE_COUNT, the smallest graph that's ever generated. Written as a literal
+ * rather than imported, to avoid a store → game-logic import direction reversal; keep this in
+ * sync if STARTING_GRAPH_NODE_COUNT ever changes. */
+const SPACING_SCALE_REFERENCE_NODE_COUNT = 7
 /** Poisson-disk sampling undershoots perfect hex-packing density; this is an empirical fudge factor so the generated canvas actually fits close to nodeCount points without excessive retries. */
 const PACKING_DENSITY = 0.75
 const ASPECT_RATIO = 4 / 3
 const MAX_SAMPLE_ATTEMPTS = 6
+
+/** How many multiples of the level-7 spacing this graph's nodeCount gets — grows with the
+ * square root of nodeCount so area (which scales with spacing²) grows roughly linearly with
+ * node count, uncapped so distances keep scaling at every level, not just early ones. Since
+ * edge weight is real distance, this is what makes early (small) graphs faster to cross and
+ * later (big) graphs slower, proportional to level. */
+function spacingScaleForNodeCount(nodeCount: number): number {
+  return Math.sqrt(nodeCount / SPACING_SCALE_REFERENCE_NODE_COUNT)
+}
 
 interface PlanarEdgeCandidate {
   a: number
@@ -171,7 +187,7 @@ export function generatePlanarGraph(nodeCount: number, rng: Rng = Math.random, c
     throw new Error('generatePlanarGraph requires at least 2 nodes')
   }
 
-  const spacing = clarityEnabled ? BASE_POINT_SPACING * CLARITY_SPACING_MULTIPLIER : BASE_POINT_SPACING
+  const spacing = SPACING_AT_LEVEL_7 * spacingScaleForNodeCount(nodeCount) * (clarityEnabled ? CLARITY_SPACING_MULTIPLIER : 1)
   const points = samplePointsForCount(nodeCount, spacing, rng)
   const bounds = computeBounds(points)
   warpPoints(points, bounds.width, bounds.height, rng)
