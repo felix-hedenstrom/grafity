@@ -64,6 +64,64 @@ describe('computeViewBounds', () => {
   })
 })
 
+describe('computeViewBounds with containerAspectRatio', () => {
+  it('grows the narrower axis to fill a wide container instead of staying a letterboxed square', () => {
+    const graph = graphWithPositions([
+      { id: 'a', x: 0, y: 0 },
+      { id: 'b', x: 10, y: 5 },
+      { id: 'c', x: 5, y: 10 },
+    ])
+    const full = computeGraphBounds(graph)
+    const view = computeViewBounds(graph, 0, 0, 900, 2)
+    expect(view.height).toBe(MIN_GRAPH_VIEW_SIZE)
+    expect(view.width).toBe(MIN_GRAPH_VIEW_SIZE * 2)
+    const graphCenterX = full.minX + full.width / 2
+    expect(view.minX).toBeCloseTo(graphCenterX - (MIN_GRAPH_VIEW_SIZE * 2) / 2, 5)
+  })
+
+  it('grows the narrower axis past the graph\'s own extent when the graph already fits as-is', () => {
+    const graph = graphWithPositions([
+      { id: 'a', x: 0, y: 0 },
+      { id: 'b', x: 600, y: 300 },
+      { id: 'c', x: 300, y: 600 },
+    ])
+    const full = computeGraphBounds(graph)
+    const view = computeViewBounds(graph, 0, 0, 900, 2)
+    expect(view.height).toBe(full.height)
+    expect(view.width).toBeCloseTo(full.height * 2, 5)
+    expect(view.width).toBeGreaterThan(full.width)
+  })
+
+  it('keeps the grown axis clamped inside the graph\'s extent when windowed and there is room to shift instead of grow past it', () => {
+    const positions = Array.from({ length: 30 }, (_, i) => ({ id: `n${i}`, x: Math.cos(i) * 300, y: Math.sin(i) * 300 }))
+    const graph = graphWithPositions(positions)
+    const full = computeGraphBounds(graph)
+    const view = computeViewBounds(graph, 0, 0, 100, 2)
+    expect(view.minX).toBeGreaterThanOrEqual(full.minX - 0.001)
+    expect(view.minX + view.width).toBeLessThanOrEqual(full.minX + full.width + 0.001)
+  })
+
+  it('is a no-op when the aspect ratio already matches', () => {
+    const graph = graphWithPositions([
+      { id: 'a', x: 0, y: 0 },
+      { id: 'b', x: 600, y: 300 },
+      { id: 'c', x: 300, y: 600 },
+    ])
+    const withoutRatio = computeViewBounds(graph, 0, 0, 900)
+    const withMatchingRatio = computeViewBounds(graph, 0, 0, 900, withoutRatio.width / withoutRatio.height)
+    expect(withMatchingRatio).toEqual(withoutRatio)
+  })
+
+  it('allows the grown axis to exceed maxSize — this is intentional, not a bug to cap back down', () => {
+    const positions = Array.from({ length: 40 }, (_, i) => ({ id: `n${i}`, x: i * 100, y: 0 }))
+    const graph = graphWithPositions(positions)
+    const view = computeViewBounds(graph, 500, 0, 200, 4)
+    expect(view.height).toBe(MIN_GRAPH_VIEW_SIZE)
+    expect(view.width).toBe(MIN_GRAPH_VIEW_SIZE * 4)
+    expect(view.width).toBeGreaterThan(200)
+  })
+})
+
 describe('computeDynamicViewSize', () => {
   it('falls back to MIN_VIEW_SIZE with no other walkers to fit', () => {
     expect(computeDynamicViewSize({ x: 0, y: 0 }, [])).toBe(MIN_VIEW_SIZE)

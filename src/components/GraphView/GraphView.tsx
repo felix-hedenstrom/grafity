@@ -13,6 +13,7 @@ import { useRunStore } from '../../store/useRunStore'
 import { Minimap } from '../Minimap/Minimap'
 import { WalkerToken } from '../WalkerToken/WalkerToken'
 import styles from './GraphView.module.css'
+import { useElementSize } from './useElementSize'
 import { useInterpolatedPositions } from './useInterpolatedPositions'
 import type { WalkerPositionInput } from './useInterpolatedPositions'
 import { useSmoothedBounds } from './useSmoothedBounds'
@@ -131,7 +132,13 @@ export function GraphView() {
   // Not memoized: focus/otherWalkerPositions now change continuously (every interpolation
   // frame), so memoizing against them would never hit anyway.
   const dynamicViewSize = computeDynamicViewSize(focus, otherWalkerPositions)
-  const targetBounds = computeViewBounds(graph, focus.x, focus.y, dynamicViewSize)
+  // Measured live off the actual rendered <svg> so the viewBox can be widened/heightened to match
+  // it — the container's CSS (width: 100%, height: 70vh capped at 600px) makes its real pixel
+  // aspect ratio unknowable at render time without measuring, and a mismatched viewBox aspect
+  // ratio gets letterboxed by the SVG's default viewBox scaling otherwise.
+  const [svgRef, svgSize] = useElementSize<SVGSVGElement>()
+  const containerAspectRatio = svgSize.width > 0 && svgSize.height > 0 ? svgSize.width / svgSize.height : undefined
+  const targetBounds = computeViewBounds(graph, focus.x, focus.y, dynamicViewSize, containerAspectRatio)
   // Smoothly glides toward targetBounds instead of snapping — targetBounds recenters on the main
   // walker every tick once windowed, and jumping the viewBox there instantly would read as a
   // jarring teleport rather than the walker simply moving.
@@ -247,6 +254,7 @@ export function GraphView() {
   return (
     <div className={styles.wrapper}>
       <svg
+        ref={svgRef}
         className={styles.graph}
         viewBox={`${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`}
         role="img"

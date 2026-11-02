@@ -60,8 +60,17 @@ export function computeDynamicViewSize(mainPos: { x: number; y: number }, otherP
  * readable on-screen size regardless of how big the graph gets; each dimension is capped
  * independently so a graph that's only oversized in one direction doesn't get needlessly cropped
  * in the other, and the window is clamped so it never drifts past the graph's actual extent.
+ * `containerAspectRatio`, when given, then grows whichever axis is narrower relative to that
+ * ratio so the viewBox fills the on-screen SVG box instead of being letterboxed by the default
+ * `xMidYMid meet` scaling.
  */
-export function computeViewBounds(graph: Graph, focusX: number, focusY: number, maxSize = MAX_VIEW_SIZE): GraphBounds {
+export function computeViewBounds(
+  graph: Graph,
+  focusX: number,
+  focusY: number,
+  maxSize = MAX_VIEW_SIZE,
+  containerAspectRatio?: number,
+): GraphBounds {
   const full = computeGraphBounds(graph)
 
   const width = Math.min(Math.max(full.width, MIN_GRAPH_VIEW_SIZE), maxSize)
@@ -76,5 +85,41 @@ export function computeViewBounds(graph: Graph, focusX: number, focusY: number, 
   const minX = width <= full.width ? Math.min(Math.max(rawMinX, full.minX), full.minX + full.width - width) : rawMinX
   const minY = height <= full.height ? Math.min(Math.max(rawMinY, full.minY), full.minY + full.height - height) : rawMinY
 
-  return { minX, minY, width, height }
+  const bounds = { minX, minY, width, height }
+  return containerAspectRatio && containerAspectRatio > 0 ? expandToAspectRatio(bounds, full, containerAspectRatio) : bounds
+}
+
+/**
+ * Where to put a window of `size` along one axis so it stays inside [fullMin, fullMin+fullSize]
+ * when it fits, or centers on the full extent when it doesn't — the same clamp-or-center rule
+ * computeViewBounds already applies per-axis when windowing a graph, reused here for the axis
+ * that grows to correct the aspect ratio.
+ */
+function clampOrCenterAxis(desiredMin: number, size: number, fullMin: number, fullSize: number): number {
+  return size <= fullSize ? Math.min(Math.max(desiredMin, fullMin), fullMin + fullSize - size) : fullMin + fullSize / 2 - size / 2
+}
+
+/**
+ * Grows the narrower axis of `bounds` (never shrinks the wider one) so its aspect ratio matches
+ * the container's actual on-screen pixel aspect ratio. Without this, a viewBox whose aspect ratio
+ * doesn't match the SVG's rendered box gets letterboxed by the default `xMidYMid meet` scaling —
+ * shrunk to fit the tighter axis, with the other axis padded by dead empty space. This expands in
+ * graph space instead, so the previously-binding axis keeps its exact size (same on-screen zoom)
+ * while the other axis just reveals more of the world around the same center. The grown axis may
+ * end up larger than maxSize/MAX_VIEW_SIZE — that's expected and correct, since it reveals more
+ * world at an unchanged scale rather than changing the scale; don't cap it back down.
+ */
+function expandToAspectRatio(bounds: GraphBounds, full: GraphBounds, aspectRatio: number): GraphBounds {
+  const currentRatio = bounds.width / bounds.height
+  if (currentRatio < aspectRatio) {
+    const width = bounds.height * aspectRatio
+    const centerX = bounds.minX + bounds.width / 2
+    return { ...bounds, width, minX: clampOrCenterAxis(centerX - width / 2, width, full.minX, full.width) }
+  }
+  if (currentRatio > aspectRatio) {
+    const height = bounds.width / aspectRatio
+    const centerY = bounds.minY + bounds.height / 2
+    return { ...bounds, height, minY: clampOrCenterAxis(centerY - height / 2, height, full.minY, full.height) }
+  }
+  return bounds
 }
