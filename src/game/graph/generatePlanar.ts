@@ -152,6 +152,46 @@ function warpPoints(points: Point[], width: number, height: number, rng: Rng): v
   }
 }
 
+/** How many relaxation passes resolveOverlaps runs. Resolving one too-close pair can nudge it
+ * into violating the minimum distance with a third point, so convergence on a crowded cluster
+ * takes more than a couple of passes — empirically, measured minimum spacing across many seeds
+ * stays at or just above the generator's true minimum from nodeCount 7 up through the 20s only
+ * once this is in the twenties; still negligible cost since generation runs once per level. */
+const OVERLAP_RESOLVE_ITERATIONS = 24
+
+/**
+ * warpPoints can drag points closer together than the Poisson-disk minimum spacing it ran after
+ * (nothing about the attractor pull respects that invariant) — with few points, one strong
+ * attractor can pull several into a near-single clump. This nudges apart only the pairs that
+ * actually ended up too close, leaving everything already compliant (including the density
+ * variation warping is meant to produce) untouched.
+ */
+function resolveOverlaps(points: Point[], minDistance: number, rng: Rng): void {
+  for (let iter = 0; iter < OVERLAP_RESOLVE_ITERATIONS; iter++) {
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        let dx = points[j].x - points[i].x
+        let dy = points[j].y - points[i].y
+        let dist = Math.hypot(dx, dy)
+        if (dist >= minDistance) continue
+        if (dist === 0) {
+          const angle = rng() * Math.PI * 2
+          dx = Math.cos(angle)
+          dy = Math.sin(angle)
+          dist = 1
+        }
+        const push = (minDistance - dist) / 2
+        const ux = dx / dist
+        const uy = dy / dist
+        points[i].x -= ux * push
+        points[i].y -= uy * push
+        points[j].x += ux * push
+        points[j].y += uy * push
+      }
+    }
+  }
+}
+
 function findFarthestNode(from: NodeId, adjacency: Record<NodeId, NodeId[]>): NodeId {
   const distances = new Map<NodeId, number>([[from, 0]])
   const queue: NodeId[] = [from]
@@ -191,6 +231,7 @@ export function generatePlanarGraph(nodeCount: number, rng: Rng = Math.random, c
   const points = samplePointsForCount(nodeCount, spacing, rng)
   const bounds = computeBounds(points)
   warpPoints(points, bounds.width, bounds.height, rng)
+  resolveOverlaps(points, spacing, rng)
 
   const delaunay = Delaunay.from(
     points,

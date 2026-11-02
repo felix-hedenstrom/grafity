@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { CSSProperties } from 'react'
-import { MIN_VIEW_SIZE, computeDynamicViewSize, computeGraphBounds, computeViewBounds } from '../../game/graph/layout'
+import { MIN_VIEW_SIZE, computeDynamicViewSize, computeGraphBounds, computeViewBounds, minEdgeLength } from '../../game/graph/layout'
 import { edgeId } from '../../game/graph/types'
 import type { GraphNode, NodeId } from '../../game/graph/types'
 import { getStrategy } from '../../game/strategies'
@@ -37,8 +37,9 @@ function hueRotateForNode(nodeId: string): number {
 }
 
 /** Ordinary nodes size by degree (one size class — double the radius — per extra edge), so a
- * busy hub reads as a bigger, brighter star at a glance. Clamped well below the generator's
- * minimum point spacing so even two adjacent high-degree stars never overlap. */
+ * busy hub reads as a bigger, brighter star at a glance. These are sized for a graph at or above
+ * its "reference" spacing; on tighter/smaller graphs they're scaled down by `starScale` (see
+ * below) so they never outgrow the actual distance between nodes. */
 const STAR_BASE_RADIUS = 10
 const STAR_MAX_RADIUS = 22
 function starRadius(degree: number): number {
@@ -47,12 +48,15 @@ function starRadius(degree: number): number {
 /** Start/goal are deliberately exempt from degree sizing — always the two biggest, most visible
  * stars on screen regardless of how many edges they happen to have. */
 const BEACON_RADIUS = 28
+/** Floor on how far starScale is allowed to shrink stars — keeps them legible even on
+ * pathologically tight local clusters rather than shrinking toward invisible pinpricks. */
+const MIN_STAR_SCALE = 0.45
 /** Caps how big ships get allowed to grow at the most extreme zoom-out — without a cap, the most
  * spread-out high-level graphs would blow the ships up well past what reads as "ship-sized". */
 const MAX_WALKER_SCALE = 2.5
 
-function radiusForNode(node: GraphNode, degree: number): number {
-  return node.isStart || node.isGoal ? BEACON_RADIUS : starRadius(degree)
+function radiusForNode(node: GraphNode, degree: number, starScale: number): number {
+  return (node.isStart || node.isGoal ? BEACON_RADIUS : starRadius(degree)) * starScale
 }
 
 /** Heading in degrees for a ship pointed from `fromId` toward `toId` — the edge it's currently
@@ -147,6 +151,13 @@ export function GraphView() {
   // graphs (high levels) they'd otherwise shrink along with everything else until barely
   // visible — scale them back up relative to the smallest window size to stay legible.
   const walkerScale = useMemo(() => Math.min(MAX_WALKER_SCALE, Math.max(1, bounds.width / MIN_VIEW_SIZE)), [bounds.width])
+  // Stars are fixed-size SVG coordinates too, sized for a graph at or above its reference node
+  // spacing — on a small/tight early graph the real spacing between nodes can be well under
+  // that, so shrink stars to match rather than letting them overlap their neighbors.
+  const starScale = useMemo(
+    () => Math.min(1, Math.max(MIN_STAR_SCALE, minEdgeLength(graph) / (2 * BEACON_RADIUS))),
+    [graph],
+  )
   // The minimap only earns its keep once the main view has actually had to window down to less
   // than the whole graph — on a graph that already fits, it would just be a smaller duplicate.
   const fullBounds = useMemo(() => computeGraphBounds(graph), [graph])
@@ -333,7 +344,7 @@ export function GraphView() {
             const isCurrent = currentNodeIds.has(node.id)
             const isBeacon = node.isStart || node.isGoal
             const isPlainVisited = discovery.visitedNodeIds.has(node.id) && !isBeacon && !isCurrent && !isHighlighted
-            const radius = radiusForNode(node, degreeByNodeId.get(node.id) ?? 2)
+            const radius = radiusForNode(node, degreeByNodeId.get(node.id) ?? 2, starScale)
             // A flat-filled circle with a small blur just gets a soft edge — it still reads as
             // "a disc," not "glow." Three layers at decreasing size/increasing opacity, each
             // blurred by a chunk of its OWN radius (not a fixed px value), approximates a real
@@ -402,7 +413,7 @@ export function GraphView() {
           // The node being orbited while discovering is always the one it's currently standing
           // on, not the (possibly not-yet-decided) one it's about to travel to.
           const atNode = nodesById.get(w.currentNodeId)
-          const nodeRadius = atNode ? radiusForNode(atNode, degreeByNodeId.get(w.currentNodeId) ?? 2) : STAR_BASE_RADIUS
+          const nodeRadius = atNode ? radiusForNode(atNode, degreeByNodeId.get(w.currentNodeId) ?? 2, starScale) : STAR_BASE_RADIUS * starScale
           return position ? (
             <WalkerToken
               key={`w-${i}`}
@@ -422,7 +433,7 @@ export function GraphView() {
             const fromId = walker2Transit ? walker2.currentNodeId : walker2.previousNodeId
             const toId = walker2Transit ? walker2Transit.nextNodeId : walker2.currentNodeId
             const atNode = nodesById.get(walker2.currentNodeId)
-            const nodeRadius = atNode ? radiusForNode(atNode, degreeByNodeId.get(walker2.currentNodeId) ?? 2) : STAR_BASE_RADIUS
+            const nodeRadius = atNode ? radiusForNode(atNode, degreeByNodeId.get(walker2.currentNodeId) ?? 2, starScale) : STAR_BASE_RADIUS * starScale
             return position ? (
               <WalkerToken
                 x={position.x ?? 0}

@@ -1,4 +1,5 @@
 import type { Graph } from './types'
+import { getEdgeWeight } from './types'
 
 export interface GraphBounds {
   minX: number
@@ -9,19 +10,30 @@ export interface GraphBounds {
 
 const BOUNDS_PADDING = 40
 
+/** Shortest edge in the graph — the actual measured minimum spacing between adjacent nodes, used to keep both view padding and star rendering proportioned to how tightly packed the graph really is. */
+export function minEdgeLength(graph: Graph): number {
+  return graph.edges.length > 0 ? Math.min(...graph.edges.map((e) => getEdgeWeight(graph, e.source, e.target))) : BOUNDS_PADDING
+}
+
 /**
  * Bounds of the *whole* graph (not just discovered nodes), so the SVG
  * viewBox can be sized once per graph and stay fixed — sizing it to only
  * the discovered subset would make the view rescale on every reveal, which
  * is exactly the kind of instability static positions were meant to fix.
+ *
+ * Padding is capped by the graph's own measured node spacing (its shortest edge) so a flat
+ * BOUNDS_PADDING can't dominate a tiny early graph's view — on a small graph that padding would
+ * otherwise be comparable to or bigger than the graph's actual content, reading as mostly empty
+ * space around a tiny, over-zoomed cluster of nodes.
  */
 export function computeGraphBounds(graph: Graph): GraphBounds {
   const xs = graph.nodes.map((node) => node.x ?? 0)
   const ys = graph.nodes.map((node) => node.y ?? 0)
-  const minX = Math.min(...xs) - BOUNDS_PADDING
-  const minY = Math.min(...ys) - BOUNDS_PADDING
-  const maxX = Math.max(...xs) + BOUNDS_PADDING
-  const maxY = Math.max(...ys) + BOUNDS_PADDING
+  const padding = Math.min(BOUNDS_PADDING, minEdgeLength(graph))
+  const minX = Math.min(...xs) - padding
+  const minY = Math.min(...ys) - padding
+  const maxX = Math.max(...xs) + padding
+  const maxY = Math.max(...ys) + padding
   return { minX, minY, width: maxX - minX, height: maxY - minY }
 }
 
