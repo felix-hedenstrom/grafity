@@ -9,6 +9,11 @@ export const QUICK_STEPS_SPEED_PER_LEVEL = 6
 export const QUICK_STEPS_BASE_COST = 60
 export const QUICK_STEPS_COST_GROWTH = 1.1
 
+/** Main Walker Speed is repeatable and only ever applies to the main walker (walkers[0]) — every other searcher ignores it entirely. Same per-level bump as Quick Steps, but gated behind it conceptually since it only matters once there's more than one walker to outrun. */
+export const MAIN_WALKER_SPEED_PER_LEVEL = 6
+export const MAIN_WALKER_SPEED_BASE_COST = 800
+export const MAIN_WALKER_SPEED_COST_GROWTH = 1.3
+
 /** Momentum is repeatable rather than a single owned/not-owned upgrade — each purchase adds one level, uncapped. */
 export const MOMENTUM_PERCENT_PER_LEVEL = 0.005
 export const MOMENTUM_BASE_COST = 50
@@ -34,6 +39,8 @@ export interface SpeedProgression {
   momentumLevel: number
   /** Real elapsed time in the current run (wall clock, not tick count) — deliberately not a lifetime total, so Momentum resets with each new graph. */
   elapsedSecondsThisRun: number
+  /** How many Main Walker Speed levels are owned — applied only when computeDistancePerSecond/computeEdgeTravelMs are called with isMainWalker true. Optional (defaults to 0) so existing call sites that never heard of this upgrade keep working untouched. */
+  mainWalkerSpeedLevel?: number
 }
 
 /** The compounding per-second rate Momentum currently grants, before applying it over elapsed time. */
@@ -47,15 +54,16 @@ export function computeMomentumMultiplier(momentumLevel: number, elapsedSecondsT
   return Math.min(MOMENTUM_MAX_MULTIPLIER, raw)
 }
 
-/** Distance/sec, before applying it to any particular edge's weight. */
-export function computeDistancePerSecond(progression: SpeedProgression): number {
-  const base = BASE_DISTANCE_PER_SECOND + progression.quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL
+/** Distance/sec, before applying it to any particular edge's weight. isMainWalker adds Main Walker Speed's bonus on top — every other walker ignores that upgrade entirely. */
+export function computeDistancePerSecond(progression: SpeedProgression, isMainWalker = false): number {
+  const mainWalkerBonus = isMainWalker ? (progression.mainWalkerSpeedLevel ?? 0) * MAIN_WALKER_SPEED_PER_LEVEL : 0
+  const base = BASE_DISTANCE_PER_SECOND + progression.quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL + mainWalkerBonus
   if (progression.momentumLevel === 0) return base
   return base * computeMomentumMultiplier(progression.momentumLevel, progression.elapsedSecondsThisRun)
 }
 
-/** How long (ms) it takes one walker to cross one edge of the given weight (distance) at the current speed. */
-export function computeEdgeTravelMs(progression: SpeedProgression, edgeWeight: number): number {
-  const interval = (1000 * edgeWeight) / computeDistancePerSecond(progression)
+/** How long (ms) it takes one walker to cross one edge of the given weight (distance) at the current speed. isMainWalker only matters for walkers[0] — see computeDistancePerSecond. */
+export function computeEdgeTravelMs(progression: SpeedProgression, edgeWeight: number, isMainWalker = false): number {
+  const interval = (1000 * edgeWeight) / computeDistancePerSecond(progression, isMainWalker)
   return Math.max(MIN_TICK_INTERVAL_MS, Math.round(interval))
 }

@@ -38,6 +38,8 @@ interface RunState {
   status: RunStatus
   /** Wall-clock timestamp (Date.now()) the current run began — Momentum compounds on real elapsed time, not step count. */
   runStartedAt: number
+  /** Set once a non-main walker (or Bidirectional's two halves meeting) has found a route to the real goal before the main walker did — walkers[0] then follows this deterministically, ignoring its strategy, until it reaches the goal. Null the rest of the time. */
+  redirectPath: NodeId[] | null
   resetWithNewGraph: () => void
 }
 
@@ -54,6 +56,7 @@ function freshRun(): Pick<
   | 'loadedStrategyId'
   | 'status'
   | 'runStartedAt'
+  | 'redirectPath'
 > {
   const progression = useProgressionStore.getState()
   const graph = generatePlanarGraph(progression.graphNodeCount, undefined, progression.clarityLevel > 0)
@@ -76,6 +79,7 @@ function freshRun(): Pick<
     loadedStrategyId: progression.activeStrategyId,
     status: 'exploring',
     runStartedAt: Date.now(),
+    redirectPath: null,
   }
 }
 

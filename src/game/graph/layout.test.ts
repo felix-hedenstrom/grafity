@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Graph } from './types'
-import { computeGraphBounds, computeViewBounds } from './layout'
+import { computeDynamicViewSize, computeGraphBounds, computeViewBounds, MAX_VIEW_SIZE, MIN_VIEW_SIZE } from './layout'
 
 /** A minimal graph with nodes placed wherever the caller wants — computeGraphBounds/computeViewBounds only care about node.x/y, not how a graph got generated. */
 function graphWithPositions(positions: { id: string; x: number; y: number }[]): Graph {
@@ -45,5 +45,34 @@ describe('computeViewBounds', () => {
     expect(view.minY).toBeGreaterThanOrEqual(full.minY)
     expect(view.minX + view.width).toBeLessThanOrEqual(full.minX + full.width + 0.001)
     expect(view.minY + view.height).toBeLessThanOrEqual(full.minY + full.height + 0.001)
+  })
+})
+
+describe('computeDynamicViewSize', () => {
+  it('falls back to MIN_VIEW_SIZE with no other walkers to fit', () => {
+    expect(computeDynamicViewSize({ x: 0, y: 0 }, [])).toBe(MIN_VIEW_SIZE)
+  })
+
+  it('stays at MIN_VIEW_SIZE when the other walkers are already close by', () => {
+    expect(computeDynamicViewSize({ x: 0, y: 0 }, [{ x: 10, y: 0 }])).toBe(MIN_VIEW_SIZE)
+  })
+
+  it('grows to fit the nearest other walkers, with margin, once they are far enough away', () => {
+    const size = computeDynamicViewSize({ x: 0, y: 0 }, [{ x: 500, y: 0 }])
+    expect(size).toBeGreaterThan(MIN_VIEW_SIZE)
+    expect(size).toBeLessThan(MAX_VIEW_SIZE)
+  })
+
+  it('only considers the two nearest other walkers, ignoring farther ones', () => {
+    const withFarOutlier = computeDynamicViewSize(
+      { x: 0, y: 0 },
+      [{ x: 100, y: 0 }, { x: 150, y: 0 }, { x: 100_000, y: 0 }],
+    )
+    const withoutOutlier = computeDynamicViewSize({ x: 0, y: 0 }, [{ x: 100, y: 0 }, { x: 150, y: 0 }])
+    expect(withFarOutlier).toBe(withoutOutlier)
+  })
+
+  it('never exceeds MAX_VIEW_SIZE, however far the nearest walkers are', () => {
+    expect(computeDynamicViewSize({ x: 0, y: 0 }, [{ x: 1_000_000, y: 0 }])).toBe(MAX_VIEW_SIZE)
   })
 })

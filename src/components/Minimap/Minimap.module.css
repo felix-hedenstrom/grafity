@@ -37,6 +37,11 @@
   filter: drop-shadow(0 0 2px var(--accent-border));
 }
 
+.mainWalkerDot {
+  fill: #facc15;
+  filter: drop-shadow(0 0 2px rgba(250, 204, 21, 0.6));
+}
+
 .viewportBox {
   fill: var(--accent-bg);
   stroke: var(--accent);

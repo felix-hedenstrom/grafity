@@ -1,10 +1,11 @@
-import { computeGoalBonus, computeInsightMultiplier } from '../currency/rules'
+import { computeInsightMultiplier } from '../currency/rules'
 import type { Graph, NodeId } from '../graph/types'
 import { getEdgeWeight } from '../graph/types'
 import { computeDiscoverWaitMs, computeEdgeTravelMs, MIN_TICK_INTERVAL_MS, CELEBRATION_HOLD_MS } from '../speed/rules'
 import type { SpeedProgression } from '../speed/rules'
 import { bidirectionalSearch, getStrategy } from '../strategies'
 import { computeEffectiveMemoryLevel } from '../strategies/memory'
+import { shortestPathToward, uniformWeight } from '../strategies/pathfinding'
 import { createWalker } from '../walker/walkerLogic'
 import type { WalkerState } from '../walker/types'
 import { useProgressionStore } from '../../store/useProgressionStore'
@@ -12,6 +13,11 @@ import { useRunStore } from '../../store/useRunStore'
 import { commitBidirectionalHop, decideBidirectionalHop, hasMet } from './bidirectionalStep'
 import { commitHop, decideNextHop } from './searcherStep'
 import { checkAchievements, computeRewardRates } from './sharedEffects'
+
+/** The main walker's deterministic route to the real goal once it's known (another walker found it first, or Bidirectional's two halves met) — reuses the same BFS every strategy's own pathfinding is built on, planning only through nodes already discovered (always enough, since the discovery that revealed/connected the goal is shared). Null if fromNodeId is already the goal. */
+function planRedirectPath(graph: Graph, discoveredNodeIds: Set<NodeId>, fromNodeId: NodeId): NodeId[] | null {
+  return shortestPathToward(graph, fromNodeId, (id) => id === graph.goalNodeId, uniformWeight, undefined, (id) => discoveredNodeIds.has(id))
+}
 
 export interface GameLoopHandle {
   stop(): void
@@ -39,6 +45,7 @@ function buildSpeedProgression(progression: ReturnType<typeof useProgressionStor
     quickStepsLevel: progression.quickStepsLevel,
     momentumLevel: progression.momentumLevel,
     elapsedSecondsThisRun: (Date.now() - useRunStore.getState().runStartedAt) / 1000,
+    mainWalkerSpeedLevel: progression.mainWalkerSpeedLevel,
   }
 }
 
@@ -67,6 +74,14 @@ function stopAll(): void {
 
 // ---- regular (non-bidirectional) searchers ----
 
+/** The main walker (i === 0) only: if a route to the real goal is already known — another searcher
+ * found it, or Bidirectional's two halves met — follow it hop by hop instead of consulting the
+ * active strategy. redirectPath always starts at the walker's current node, so index 1 is the
+ * next hop. */
+function redirectedNextHop(redirectPath: NodeId[] | null): NodeId | null {
+  return redirectPath && redirectPath.length > 1 ? redirectPath[1] : null
+}
+
 function departSearcher(i: number): void {
   const runState = useRunStore.getState()
   if (runState.status !== 'exploring') return
@@ -74,26 +89,34 @@ function departSearcher(i: number): void {
   if (!walker || walker.hasReachedGoal) return
 
   const progression = useProgressionStore.getState()
-  const strategy = getStrategy(progression.activeStrategyId)
-  const memoryLevel = computeEffectiveMemoryLevel(progression.memoryLevel, progression.deepMemoryLevel, strategy.memoryMultiplier)
+  const redirectedHop = i === 0 ? redirectedNextHop(runState.redirectPath) : null
 
-  const { nextNodeId, memory } = decideNextHop({
-    graph: runState.graph,
-    discovery: runState.discovery,
-    walker,
-    strategy,
-    memory: runState.strategyMemories[i],
-    memoryLevel,
-    sharedRecentPath: runState.sharedRecentPath,
-  })
+  let nextNodeId: NodeId
+  if (redirectedHop !== null) {
+    nextNodeId = redirectedHop
+  } else {
+    const strategy = getStrategy(progression.activeStrategyId)
+    const memoryLevel = computeEffectiveMemoryLevel(progression.memoryLevel, progression.deepMemoryLevel, strategy.memoryMultiplier)
 
-  useRunStore.setState((s) => ({
-    strategyMemories: s.strategyMemories.map((m, idx) => (idx === i ? memory : m)),
-    sharedRecentPath: [...s.sharedRecentPath, walker.currentNodeId],
-  }))
+    const decided = decideNextHop({
+      graph: runState.graph,
+      discovery: runState.discovery,
+      walker,
+      strategy,
+      memory: runState.strategyMemories[i],
+      memoryLevel,
+      sharedRecentPath: runState.sharedRecentPath,
+    })
+    nextNodeId = decided.nextNodeId
+
+    useRunStore.setState((s) => ({
+      strategyMemories: s.strategyMemories.map((m, idx) => (idx === i ? decided.memory : m)),
+      sharedRecentPath: [...s.sharedRecentPath, walker.currentNodeId],
+    }))
+  }
 
   const edgeWeight = getEdgeWeight(runState.graph, walker.currentNodeId, nextNodeId)
-  const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight)
+  const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight, i === 0)
   useRunStore.setState((s) => ({
     walkerTransits: s.walkerTransits.map((t, idx) => (idx === i ? { nextNodeId, travelMs } : t)),
   }))
@@ -115,20 +138,54 @@ function arriveSearcher(i: number, nextNodeId: NodeId): void {
     rewardRates: computeRewardRates(progression),
   })
 
-  useRunStore.setState((s) => ({
-    walkers: s.walkers.map((w, idx) => (idx === i ? result.walker : w)),
-    walkerTransits: s.walkerTransits.map((t, idx) => (idx === i ? null : t)),
-    discovery: result.discovery,
-    status: result.goalReached ? 'celebrating' : s.status,
-  }))
+  // Only the main walker (i === 0) actually reaching the goal ends the run. Any other searcher
+  // reaching it just reveals that a route exists — every other walker then disappears and the
+  // main walker beelines there itself, via redirectPath.
+  const mainWalkerWon = i === 0 && result.goalReached
+  const otherWalkerFoundExit = i !== 0 && result.goalReached
+
+  useRunStore.setState((s) => {
+    const walkers = s.walkers.map((w, idx) => (idx === i ? result.walker : w))
+    const walkerTransits = s.walkerTransits.map((t, idx) => (idx === i ? null : t))
+
+    if (!otherWalkerFoundExit) {
+      // Consume one hop of the main walker's redirect path as it lands, so the next departure
+      // reads the next one; cleared outright once it actually reaches the goal.
+      const redirectPath =
+        mainWalkerWon || !s.redirectPath ? null : i === 0 && s.redirectPath.length > 1 ? s.redirectPath.slice(1) : s.redirectPath
+      return {
+        walkers,
+        walkerTransits,
+        discovery: result.discovery,
+        status: mainWalkerWon ? 'celebrating' : s.status,
+        redirectPath,
+      }
+    }
+
+    const main = walkers[0]
+    const redirectPath = s.redirectPath ?? (main ? planRedirectPath(s.graph, result.discovery.discoveredNodeIds, main.currentNodeId) : null)
+    return {
+      walkers: main ? [main] : [],
+      walkerTransits: main ? [walkerTransits[0]] : [],
+      strategyMemories: s.strategyMemories.slice(0, 1),
+      discovery: result.discovery,
+      redirectPath,
+    }
+  })
 
   if (result.currencyEarned > 0) {
     progression.earnCurrency(result.currencyEarned * computeInsightMultiplier(progression.insightMultiplierLevel))
   }
-  if (result.goalReached) progression.growGraph()
   checkAchievements(result.discovery, runState.graph.nodes.length)
 
-  if (result.goalReached) return // the setState above already flipped status to 'celebrating', which stops every other walker's timer via reconcile()
+  if (mainWalkerWon) {
+    progression.growGraph()
+    return // the setState above already flipped status to 'celebrating', which stops every other walker's timer via reconcile()
+  }
+  if (otherWalkerFoundExit) {
+    clearSearcherTimersFrom(1) // every walker but the main one just vanished
+    return
+  }
 
   const waitMs = result.wasAlreadyVisited ? 0 : computeDiscoverWaitMs(progression.discoverWaitLevel)
   searcherTimers[i] = setTimeout(() => departSearcher(i), waitMs)
@@ -163,12 +220,30 @@ function setBidirectionalTimer(slot: BidirectionalSlot, id: TimerId): void {
   else walker2Timer = id
 }
 
-function declareBidirectionalMet(progression: ReturnType<typeof useProgressionStore.getState>): void {
-  const rewardRates = computeRewardRates(progression)
-  const goalBonus = computeGoalBonus(useRunStore.getState().graph, rewardRates.goalPerNode)
-  progression.earnCurrency(goalBonus * computeInsightMultiplier(progression.insightMultiplierLevel))
-  progression.growGraph()
-  useRunStore.setState({ status: 'celebrating' })
+/**
+ * The two halves meeting (or both stalling with nothing left to explore) only proves a route
+ * exists — it doesn't mean the main (forward) walker is standing on the real goal node, so it no
+ * longer celebrates immediately. Instead the reverse walker disappears, and the forward walker
+ * gets handed a redirectPath and starts beelining for the actual goal via the normal searcher
+ * timer chain (departSearcher), exactly like a non-main walker finding the exit in regular mode.
+ */
+function declareBidirectionalPathFound(): void {
+  const runState = useRunStore.getState()
+  const forward = runState.walkers[0]
+  if (!forward) return
+
+  if (walker2Timer !== undefined) {
+    clearTimeout(walker2Timer)
+    walker2Timer = undefined
+  }
+  if (searcherTimers[0] !== undefined) {
+    clearTimeout(searcherTimers[0])
+    searcherTimers[0] = undefined
+  }
+
+  const redirectPath = planRedirectPath(runState.graph, runState.discovery.discoveredNodeIds, forward.currentNodeId)
+  useRunStore.setState({ walker2: null, walker2Transit: null, redirectPath })
+  departSearcher(0)
 }
 
 /** Nothing unvisited is reachable from this side. If the other side is equally stuck, there's no territory left between them — call it met rather than retry forever; otherwise the other side may still open up new territory, so retry this side shortly. */
@@ -182,7 +257,7 @@ function handleBidirectionalStall(slot: BidirectionalSlot): void {
   const otherWalker = otherSlot === 'forward' ? forward : reverse
   const otherNext = decideBidirectionalHop(runState.graph, runState.discovery, otherWalker)
   if (otherNext === null) {
-    declareBidirectionalMet(useProgressionStore.getState())
+    declareBidirectionalPathFound()
     return
   }
   setBidirectionalTimer(slot, setTimeout(() => departBidirectional(slot), MIN_TICK_INTERVAL_MS))
@@ -201,7 +276,7 @@ function departBidirectional(slot: BidirectionalSlot): void {
 
   const progression = useProgressionStore.getState()
   const edgeWeight = getEdgeWeight(runState.graph, walker.currentNodeId, nextNodeId)
-  const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight)
+  const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight, slot === 'forward')
   useRunStore.setState((s) =>
     slot === 'forward'
       ? { walkerTransits: s.walkerTransits.map((t, idx) => (idx === 0 ? { nextNodeId, travelMs } : t)) }
@@ -241,7 +316,7 @@ function arriveBidirectional(slot: BidirectionalSlot, nextNodeId: NodeId): void 
   const forward = after.walkers[0]
   const reverse = after.walker2
   if (forward && reverse && hasMet(after.graph, forward, reverse)) {
-    declareBidirectionalMet(progression)
+    declareBidirectionalPathFound()
     return
   }
 
@@ -273,6 +348,7 @@ function switchStrategy(strategyId: string): void {
       strategyMemories: [],
       sharedRecentPath: [],
       loadedStrategyId: strategyId,
+      redirectPath: null,
     })
 
     lastSeenHasWalker2 = true
@@ -301,6 +377,7 @@ function switchStrategy(strategyId: string): void {
     strategyMemories: walkers.map(() => strategy.createMemory?.()),
     sharedRecentPath: [],
     loadedStrategyId: strategyId,
+    redirectPath: null,
   })
 
   lastSeenHasWalker2 = false
@@ -359,7 +436,9 @@ function reconcile(): void {
   }
 
   const isBidirectional = progression.activeStrategyId === bidirectionalSearch.id
-  if (!isBidirectional) {
+  if (!isBidirectional && !runState.redirectPath) {
+    // Once the exit is already known and the main walker is beelining toward it, the hunt phase
+    // for this graph is over — no point growing the searcher pool further.
     const desiredSearcherCount = 1 + progression.searcherLevel
     if (runState.walkers.length < desiredSearcherCount) {
       growSearchers(desiredSearcherCount)

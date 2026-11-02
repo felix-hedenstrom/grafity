@@ -8,6 +8,7 @@ import {
   computeMomentumPercentPerSecond,
   DISCOVER_WAIT_BASE_MS,
   DISCOVER_WAIT_PERCENT_PER_LEVEL,
+  MAIN_WALKER_SPEED_PER_LEVEL,
   MIN_TICK_INTERVAL_MS,
   MOMENTUM_MAX_MULTIPLIER,
   MOMENTUM_PERCENT_PER_LEVEL,
@@ -69,6 +70,31 @@ describe('computeEdgeTravelMs', () => {
     const both = computeEdgeTravelMs({ quickStepsLevel: 2, momentumLevel: 1, elapsedSecondsThisRun: 60 }, TEST_EDGE_WEIGHT)
     const quickOnly = computeEdgeTravelMs({ quickStepsLevel: 2, momentumLevel: 0, elapsedSecondsThisRun: 60 }, TEST_EDGE_WEIGHT)
     expect(both).toBeLessThan(quickOnly)
+  })
+})
+
+describe('Main Walker Speed (isMainWalker)', () => {
+  it('computeDistancePerSecond ignores mainWalkerSpeedLevel when isMainWalker is false (the default)', () => {
+    const progression = { quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0, mainWalkerSpeedLevel: 5 }
+    expect(computeDistancePerSecond(progression)).toBe(BASE_DISTANCE_PER_SECOND)
+    expect(computeDistancePerSecond(progression, false)).toBe(BASE_DISTANCE_PER_SECOND)
+  })
+
+  it('computeDistancePerSecond adds the bonus only when isMainWalker is true', () => {
+    const progression = { quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0, mainWalkerSpeedLevel: 3 }
+    expect(computeDistancePerSecond(progression, true)).toBe(BASE_DISTANCE_PER_SECOND + 3 * MAIN_WALKER_SPEED_PER_LEVEL)
+  })
+
+  it('treats a missing mainWalkerSpeedLevel as zero', () => {
+    const progression = { quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0 }
+    expect(computeDistancePerSecond(progression, true)).toBe(BASE_DISTANCE_PER_SECOND)
+  })
+
+  it('computeEdgeTravelMs crosses the same edge faster for the main walker only', () => {
+    const progression = { quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0, mainWalkerSpeedLevel: 5 }
+    const otherWalker = computeEdgeTravelMs(progression, TEST_EDGE_WEIGHT, false)
+    const mainWalker = computeEdgeTravelMs(progression, TEST_EDGE_WEIGHT, true)
+    expect(mainWalker).toBeLessThan(otherWalker)
   })
 })
 

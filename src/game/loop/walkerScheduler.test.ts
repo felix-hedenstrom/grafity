@@ -1,13 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCurrency } from '../currency/rules'
+import type { Graph } from '../graph/types'
 import { CELEBRATION_HOLD_MS } from '../speed/rules'
 import { bidirectionalSearch } from '../strategies'
 import { DEFAULT_STRATEGY_ID } from '../upgrades/definitions'
+import { createWalker } from '../walker/walkerLogic'
 import { useAchievementStore } from '../../store/useAchievementStore'
 import { STARTING_GRAPH_NODE_COUNT, useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
 import type { GameLoopHandle } from './walkerScheduler'
 import { startWalkerScheduler } from './walkerScheduler'
+
+/**
+ * A tiny straight-line graph (start -- A -- goal) with equal edge weights, used to deterministically
+ * exercise the redirect flow: with Math.random mocked to always return 0, randomWalk's pickRandom
+ * always picks each node's first adjacency entry, so ordering the arrays below fully controls which
+ * way every walker moves.
+ */
+function buildLineGraph(): Graph {
+  return {
+    nodes: [
+      { id: 'start', isStart: true, isGoal: false, x: 0, y: 0 },
+      { id: 'A', isStart: false, isGoal: false, x: 100, y: 0 },
+      { id: 'goal', isStart: false, isGoal: true, x: 200, y: 0 },
+    ],
+    edges: [
+      { id: 'A--start', source: 'start', target: 'A', weight: 60 },
+      { id: 'A--goal', source: 'A', target: 'goal', weight: 60 },
+    ],
+    startNodeId: 'start',
+    goalNodeId: 'goal',
+    adjacency: { start: ['A'], A: ['goal', 'start'], goal: ['A'] },
+  }
+}
 
 let handle: GameLoopHandle | undefined
 
@@ -127,6 +152,62 @@ describe('walkerScheduler', () => {
     expect(walkers).toHaveLength(2)
     // The original searcher keeps going from wherever it was, not reset to the start node.
     expect(walkers[0].stepsTaken).toBeGreaterThanOrEqual(firstWalkerBefore.stepsTaken)
+  })
+
+  describe('exit redirect', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    beforeEach(() => {
+      vi.spyOn(Math, 'random').mockReturnValue(0) // randomWalk always takes each node's first adjacency entry
+      useProgressionStore.setState({ searcherLevel: 1 }) // a second (non-main) walker
+      const graph = buildLineGraph()
+      useRunStore.setState({
+        graph,
+        walkers: [createWalker(graph.startNodeId), { ...createWalker('A'), path: ['start', 'A'] }],
+        walkerTransits: [null, null],
+        discovery: {
+          discoveredNodeIds: new Set(['start', 'A']),
+          discoveredEdgeIds: new Set(['A--start']),
+          visitedNodeIds: new Set(['start', 'A']),
+        },
+        strategyMemories: [undefined, undefined],
+        sharedRecentPath: [],
+        loadedStrategyId: DEFAULT_STRATEGY_ID,
+        status: 'exploring',
+        redirectPath: null,
+      })
+    })
+
+    it('redirects the main walker and makes every other walker disappear once a non-main walker finds the exit', () => {
+      handle = startWalkerScheduler()
+      vi.advanceTimersByTime(4100) // just enough for walker[1] (A -> goal) to land
+
+      const state = useRunStore.getState()
+      expect(state.walkers).toHaveLength(1)
+      expect(state.redirectPath).not.toBeNull()
+      expect(state.status).toBe('exploring') // not a win yet — only the main walker reaching the goal ends the run
+    })
+
+    it('eventually lands the main walker on the real goal via the redirect path, ending the run', () => {
+      handle = startWalkerScheduler()
+      vi.advanceTimersByTime(9_000) // first hop (A) + redirect handoff + second hop (goal), with margin — short of the celebration hold resetting the run
+
+      expect(useRunStore.getState().walkers[0].hasReachedGoal).toBe(true)
+      expect(useRunStore.getState().status).toBe('celebrating')
+    })
+
+    it('stops growing the searcher pool while a redirect is in flight', () => {
+      handle = startWalkerScheduler()
+      vi.advanceTimersByTime(4100)
+      expect(useRunStore.getState().redirectPath).not.toBeNull()
+
+      useProgressionStore.setState({ searcherLevel: 4 })
+      vi.advanceTimersByTime(500)
+
+      expect(useRunStore.getState().walkers).toHaveLength(1) // no new searchers spawned mid-redirect
+    })
   })
 
   describe('bidirectional search', () => {

@@ -14,7 +14,7 @@ const SVG_HEIGHT = PANEL_HEIGHT - PADDING * 2
 interface MinimapProps {
   graph: Graph
   discoveredNodeIds: Set<NodeId>
-  walkerPositions: { x: number; y: number }[]
+  walkerPositions: { x: number; y: number; isMain: boolean }[]
   /** The main view's current camera window, in the same graph-space coordinates as node positions — drawn as a box so it's obvious what slice of the whole graph is actually on screen. */
   viewport: GraphBounds
 }
@@ -57,7 +57,9 @@ export function Minimap({ graph, discoveredNodeIds, walkerPositions, viewport }:
         />
         {walkerPositions.map((pos, i) => {
           const p = projectToMinimap(pos.x, pos.y, fullBounds, transform)
-          return <circle key={i} cx={p.x} cy={p.y} r={2.2} className={styles.walkerDot} />
+          return (
+            <circle key={i} cx={p.x} cy={p.y} r={pos.isMain ? 2.8 : 2.2} className={pos.isMain ? styles.mainWalkerDot : styles.walkerDot} />
+          )
         })}
       </svg>
     </div>

@@ -9,3 +9,8 @@
   fill: #ec4899;
   filter: drop-shadow(0 0 4px rgba(236, 72, 153, 0.5));
 }
+
+.main {
+  fill: #facc15;
+  filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.6));
+}

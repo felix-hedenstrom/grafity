@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { computeGraphBounds, computeViewBounds } from '../../game/graph/layout'
+import { computeDynamicViewSize, computeGraphBounds, computeViewBounds } from '../../game/graph/layout'
 import { edgeId } from '../../game/graph/types'
 import type { NodeId } from '../../game/graph/types'
 import { getStrategy } from '../../game/strategies'
@@ -40,6 +40,7 @@ export function GraphView() {
   const walker2Transit = useRunStore((s) => s.walker2Transit)
   const discovery = useRunStore((s) => s.discovery)
   const status = useRunStore((s) => s.status)
+  const redirectPath = useRunStore((s) => s.redirectPath)
   const strategyMemories = useRunStore((s) => s.strategyMemories)
   const sharedRecentPath = useRunStore((s) => s.sharedRecentPath)
   const activeStrategyId = useProgressionStore((s) => s.activeStrategyId)
@@ -61,20 +62,28 @@ export function GraphView() {
   // Bounds come from the whole graph (not just discovered nodes), so the view never rescales as
   // fog lifts — it just shows more of a frame that was already fixed. Below MAX_VIEW_SIZE that
   // frame is the whole graph, static for its lifetime; past it, node circles would shrink to
-  // near-invisible dots if we kept fitting everything, so the view instead becomes a fixed-size
-  // window that follows the walkers' average position (the only thing that then changes tick to tick).
+  // near-invisible dots if we kept fitting everything, so the view instead becomes a window
+  // centered on the main walker (walkers[0]) — centering on the average of every walker's
+  // position instead could land the camera on empty space between two widely spread-out walkers,
+  // with neither actually on screen.
   const focus = useMemo(() => {
-    const positions = allWalkers.map((w) => nodesById.get(w.currentNodeId)).filter((p): p is NonNullable<typeof p> => p != null)
-    if (positions.length === 0) return { x: 0, y: 0 }
-    return {
-      x: positions.reduce((sum, p) => sum + (p.x ?? 0), 0) / positions.length,
-      y: positions.reduce((sum, p) => sum + (p.y ?? 0), 0) / positions.length,
-    }
-  }, [allWalkers, nodesById])
-  const targetBounds = useMemo(() => computeViewBounds(graph, focus.x, focus.y), [graph, focus])
-  // Smoothly glides toward targetBounds instead of snapping — targetBounds recenters on the
-  // walkers' average position every tick once windowed, and jumping the viewBox there instantly
-  // read as a jarring teleport rather than the walker simply moving.
+    const mainPos = walkers[0] ? nodesById.get(walkers[0].currentNodeId) : undefined
+    return { x: mainPos?.x ?? 0, y: mainPos?.y ?? 0 }
+  }, [walkers, nodesById])
+  // Every other active walker, used only to size the window — not to move its center.
+  const otherWalkerPositions = useMemo(
+    () =>
+      [...walkers.slice(1), ...(walker2 ? [walker2] : [])]
+        .map((w) => nodesById.get(w.currentNodeId))
+        .filter((p): p is NonNullable<typeof p> => p != null)
+        .map((p) => ({ x: p.x ?? 0, y: p.y ?? 0 })),
+    [walkers, walker2, nodesById],
+  )
+  const dynamicViewSize = useMemo(() => computeDynamicViewSize(focus, otherWalkerPositions), [focus, otherWalkerPositions])
+  const targetBounds = useMemo(() => computeViewBounds(graph, focus.x, focus.y, dynamicViewSize), [graph, focus, dynamicViewSize])
+  // Smoothly glides toward targetBounds instead of snapping — targetBounds recenters on the main
+  // walker every tick once windowed, and jumping the viewBox there instantly would read as a
+  // jarring teleport rather than the walker simply moving.
   const bounds = useSmoothedBounds(targetBounds)
   // The minimap only earns its keep once the main view has actually had to window down to less
   // than the whole graph — on a graph that already fits, it would just be a smaller duplicate.
@@ -132,13 +141,14 @@ export function GraphView() {
   const walkerPositions = useMemo(
     () =>
       allWalkers
-        .map((w) => nodesById.get(w.currentNodeId))
-        .filter((p): p is NonNullable<typeof p> => p != null)
-        .map((p) => ({ x: p.x ?? 0, y: p.y ?? 0 })),
+        .map((w, i) => ({ node: nodesById.get(w.currentNodeId), isMain: i === 0 }))
+        .filter((entry): entry is { node: NonNullable<typeof entry.node>; isMain: boolean } => entry.node != null)
+        .map(({ node, isMain }) => ({ x: node.x ?? 0, y: node.y ?? 0, isMain })),
     [allWalkers, nodesById],
   )
 
   const isCelebrating = status === 'celebrating'
+  const isRedirecting = redirectPath !== null
 
   return (
     <div className={styles.wrapper}>
@@ -197,7 +207,13 @@ export function GraphView() {
           const transit = walkerTransits[i]
           const position = nodesById.get(transit?.nextNodeId ?? w.currentNodeId)
           return position ? (
-            <WalkerToken key={`w-${i}`} x={position.x ?? 0} y={position.y ?? 0} travelMs={transit?.travelMs ?? 0} />
+            <WalkerToken
+              key={`w-${i}`}
+              x={position.x ?? 0}
+              y={position.y ?? 0}
+              travelMs={transit?.travelMs ?? 0}
+              variant={i === 0 ? 'main' : 'forward'}
+            />
           ) : null
         })}
         {walker2 &&
@@ -221,6 +237,7 @@ export function GraphView() {
           })}
       </svg>
       {isCelebrating && <div className={styles.banner}>Exit found!</div>}
+      {!isCelebrating && isRedirecting && <div className={styles.banner}>Exit found! Main walker heading there…</div>}
       {isWindowed && minimapOwned && minimapEnabled && (
         <Minimap graph={graph} discoveredNodeIds={discovery.discoveredNodeIds} walkerPositions={walkerPositions} viewport={bounds} />
       )}

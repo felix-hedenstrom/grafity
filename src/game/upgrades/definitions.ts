@@ -22,6 +22,9 @@ import {
   DISCOVER_WAIT_BASE_COST,
   DISCOVER_WAIT_COST_GROWTH,
   DISCOVER_WAIT_PERCENT_PER_LEVEL,
+  MAIN_WALKER_SPEED_BASE_COST,
+  MAIN_WALKER_SPEED_COST_GROWTH,
+  MAIN_WALKER_SPEED_PER_LEVEL,
   MOMENTUM_BASE_COST,
   MOMENTUM_COST_GROWTH,
   MOMENTUM_MAX_MULTIPLIER,
@@ -114,7 +117,7 @@ export const UPGRADES: UpgradeDefinition[] = [
 /** Quick Steps is repeatable — each purchase adds a flat amount to the base travel speed, uncapped. */
 export const QUICK_STEPS_UPGRADE_INFO: RepeatableUpgradeInfo = {
   name: 'Quick Steps',
-  description: `+${QUICK_STEPS_SPEED_PER_LEVEL} edges/sec travel speed per purchase.`,
+  description: `+${QUICK_STEPS_SPEED_PER_LEVEL} travel speed per purchase.`,
   baseCost: QUICK_STEPS_BASE_COST,
   costGrowth: QUICK_STEPS_COST_GROWTH,
   minLevel: 10,
@@ -235,6 +238,15 @@ export const SEARCHER_UPGRADE_INFO: RepeatableUpgradeInfo = {
   description: '+1 searcher exploring simultaneously per purchase.',
   baseCost: SEARCHER_BASE_COST,
   costGrowth: SEARCHER_COST_GROWTH,
+  minLevel: 35,
+}
+
+/** Main Walker Speed is repeatable and only ever speeds up the main walker (walkers[0]) — every other searcher, and Bidirectional's reverse half, is unaffected. Only matters once there's more than one walker in play, so it's gated well behind Extra Searcher. */
+export const MAIN_WALKER_SPEED_UPGRADE_INFO: RepeatableUpgradeInfo = {
+  name: 'Main Walker Speed',
+  description: `+${MAIN_WALKER_SPEED_PER_LEVEL} travel speed per purchase — main walker only.`,
+  baseCost: MAIN_WALKER_SPEED_BASE_COST,
+  costGrowth: MAIN_WALKER_SPEED_COST_GROWTH,
   minLevel: 35,
 }
 

@@ -13,6 +13,7 @@ import {
   EXIT_BONUS_UPGRADE_INFO,
   EXPANSION_UPGRADE_INFO,
   INSIGHT_MULTIPLIER_UPGRADE_INFO,
+  MAIN_WALKER_SPEED_UPGRADE_INFO,
   MINIMAP_UPGRADE,
   MOMENTUM_UPGRADE_INFO,
   NODE_MEMORY_UPGRADE_INFO,
@@ -41,6 +42,7 @@ interface ProgressionState {
   quickStepsLevel: number
   discoverWaitLevel: number
   searcherLevel: number
+  mainWalkerSpeedLevel: number
   clarityLevel: number
   insightMultiplierLevel: number
   discoveryBonusLevel: number
@@ -58,6 +60,7 @@ interface ProgressionState {
   purchaseQuickStepsLevel: () => boolean
   purchaseDiscoverWaitLevel: () => boolean
   purchaseSearcherLevel: () => boolean
+  purchaseMainWalkerSpeedLevel: () => boolean
   purchaseInsightMultiplierLevel: () => boolean
   purchaseDiscoveryBonusLevel: () => boolean
   purchaseRevisitBonusLevel: () => boolean
@@ -93,6 +96,7 @@ export const useProgressionStore = create<ProgressionState>()(
       quickStepsLevel: 0,
       discoverWaitLevel: 0,
       searcherLevel: 0,
+      mainWalkerSpeedLevel: 0,
       clarityLevel: 0,
       insightMultiplierLevel: 0,
       discoveryBonusLevel: 0,
@@ -220,6 +224,19 @@ export const useProgressionStore = create<ProgressionState>()(
         return true
       },
 
+      purchaseMainWalkerSpeedLevel: () => {
+        const state = get()
+        // Gated behind owning Extra Searcher too, in addition to minLevel — it has nothing to
+        // speed past until there's at least one other walker to outrun.
+        if (state.mainWalkerSpeedLevel === 0 && (state.highestGraphNodeCount < MAIN_WALKER_SPEED_UPGRADE_INFO.minLevel || state.searcherLevel === 0))
+          return false
+        const cost = costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, state.mainWalkerSpeedLevel)
+        if (state.currency.amount < cost) return false
+
+        set({ currency: spend(state.currency, cost), mainWalkerSpeedLevel: state.mainWalkerSpeedLevel + 1 })
+        return true
+      },
+
       purchaseInsightMultiplierLevel: () => {
         const state = get()
         if (state.insightMultiplierLevel === 0 && state.highestGraphNodeCount < INSIGHT_MULTIPLIER_UPGRADE_INFO.minLevel) return false
@@ -304,6 +321,7 @@ export const useProgressionStore = create<ProgressionState>()(
           quickStepsLevel: 0,
           discoverWaitLevel: 0,
           searcherLevel: 0,
+          mainWalkerSpeedLevel: 0,
           clarityLevel: 0,
           insightMultiplierLevel: 0,
           discoveryBonusLevel: 0,

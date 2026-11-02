@@ -10,6 +10,7 @@ import {
   EXIT_BONUS_UPGRADE_INFO,
   EXPANSION_UPGRADE_INFO,
   INSIGHT_MULTIPLIER_UPGRADE_INFO,
+  MAIN_WALKER_SPEED_UPGRADE_INFO,
   MINIMAP_UPGRADE,
   MOMENTUM_UPGRADE_INFO,
   NODE_MEMORY_UPGRADE_INFO,
@@ -38,6 +39,7 @@ beforeEach(() => {
     deepMemoryLevel: 0,
     quickStepsLevel: 0,
     searcherLevel: 0,
+    mainWalkerSpeedLevel: 0,
     clarityLevel: 0,
     discoveryBonusLevel: 0,
     revisitBonusLevel: 0,
@@ -154,6 +156,45 @@ describe('useProgressionStore', () => {
       useProgressionStore.setState({ highestGraphNodeCount: STARTING_GRAPH_NODE_COUNT })
       expect(useProgressionStore.getState()[actionName]()).toBe(true)
       expect(useProgressionStore.getState()[levelField]).toBe(2)
+    })
+  })
+
+  describe('purchaseMainWalkerSpeedLevel', () => {
+    it('refuses while Extra Searcher is unowned, even with enough currency and level', () => {
+      useProgressionStore.setState({
+        currency: earn(createCurrency(), costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 0)),
+        highestGraphNodeCount: LEVEL_GATE_CLEARED,
+        searcherLevel: 0,
+      })
+
+      expect(useProgressionStore.getState().purchaseMainWalkerSpeedLevel()).toBe(false)
+      expect(useProgressionStore.getState().mainWalkerSpeedLevel).toBe(0)
+    })
+
+    it('stacks levels once Extra Searcher is owned, deducting a geometrically increasing cost each time', () => {
+      const level0Cost = costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 0)
+      const level1Cost = costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 1)
+      useProgressionStore.setState({
+        currency: earn(createCurrency(), level0Cost + level1Cost),
+        highestGraphNodeCount: LEVEL_GATE_CLEARED,
+        searcherLevel: 1,
+      })
+
+      expect(useProgressionStore.getState().purchaseMainWalkerSpeedLevel()).toBe(true)
+      expect(useProgressionStore.getState().mainWalkerSpeedLevel).toBe(1)
+      expect(useProgressionStore.getState().purchaseMainWalkerSpeedLevel()).toBe(true)
+      expect(useProgressionStore.getState().mainWalkerSpeedLevel).toBe(2)
+    })
+
+    it('refuses the first purchase below its minLevel requirement even with Extra Searcher owned', () => {
+      useProgressionStore.setState({
+        currency: earn(createCurrency(), costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 0)),
+        highestGraphNodeCount: MAIN_WALKER_SPEED_UPGRADE_INFO.minLevel - 1,
+        searcherLevel: 1,
+      })
+
+      expect(useProgressionStore.getState().purchaseMainWalkerSpeedLevel()).toBe(false)
+      expect(useProgressionStore.getState().mainWalkerSpeedLevel).toBe(0)
     })
   })
 
@@ -321,6 +362,7 @@ describe('useProgressionStore', () => {
           costForLevel(DEEP_MEMORY_UPGRADE_INFO, 0) +
           costForLevel(QUICK_STEPS_UPGRADE_INFO, 0) +
           costForLevel(SEARCHER_UPGRADE_INFO, 0) +
+          costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 0) +
           costForLevel(DISCOVERY_BONUS_UPGRADE_INFO, 0) +
           costForLevel(REVISIT_BONUS_UPGRADE_INFO, 0) +
           costForLevel(EXIT_BONUS_UPGRADE_INFO, 0) +
@@ -338,6 +380,7 @@ describe('useProgressionStore', () => {
     useProgressionStore.getState().purchaseDeepMemoryLevel()
     useProgressionStore.getState().purchaseQuickStepsLevel()
     useProgressionStore.getState().purchaseSearcherLevel()
+    useProgressionStore.getState().purchaseMainWalkerSpeedLevel()
     useProgressionStore.getState().purchaseDiscoveryBonusLevel()
     useProgressionStore.getState().purchaseRevisitBonusLevel()
     useProgressionStore.getState().purchaseExitBonusLevel()
@@ -362,6 +405,7 @@ describe('useProgressionStore', () => {
     expect(state.deepMemoryLevel).toBe(0)
     expect(state.quickStepsLevel).toBe(0)
     expect(state.searcherLevel).toBe(0)
+    expect(state.mainWalkerSpeedLevel).toBe(0)
     expect(state.discoveryBonusLevel).toBe(0)
     expect(state.revisitBonusLevel).toBe(0)
     expect(state.exitBonusLevel).toBe(0)
