@@ -7,22 +7,25 @@ import { aStar } from './aStar'
 import type { StrategyContext } from './types'
 
 function positionedForkGraph(): Graph {
-  // hub -(1)- near (close to goal in space) -(1)- goal
-  // hub -(1)- far (laid out away from goal) -(1)- goal
+  // hub --- near --- goal and hub --- far --- goal are built, using exact Pythagorean-triple
+  // placements, so both routes sum to the exact same real distance (40), but near sits much
+  // closer to the goal (distance 15) than far does (distance 25) — the only way to make two
+  // routes tie on real-distance cost while still giving A*'s straight-line heuristic something
+  // to prefer between them. Exact integer legs avoid any floating-point drift tipping the tie.
   const adjacency = { hub: ['near', 'far'], near: ['hub', 'goal'], far: ['hub', 'goal'], goal: ['near', 'far'] }
   const positions: Record<string, { x: number; y: number }> = {
     hub: { x: 0, y: 0 },
-    near: { x: 10, y: 0 },
-    far: { x: -100, y: 100 },
+    near: { x: 20, y: 15 }, // hub--near = 25, near--goal = 15
+    far: { x: 0, y: 15 }, // hub--far = 15, far--goal = 25
     goal: { x: 20, y: 0 },
   }
   return {
     nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'hub', isGoal: id === 'goal', ...positions[id] })),
     edges: [
-      { id: 'hub--near', source: 'hub', target: 'near', weight: 1 },
-      { id: 'near--goal', source: 'near', target: 'goal', weight: 1 },
-      { id: 'hub--far', source: 'hub', target: 'far', weight: 1 },
-      { id: 'far--goal', source: 'far', target: 'goal', weight: 1 },
+      { id: 'hub--near', source: 'hub', target: 'near' },
+      { id: 'near--goal', source: 'near', target: 'goal' },
+      { id: 'hub--far', source: 'hub', target: 'far' },
+      { id: 'far--goal', source: 'far', target: 'goal' },
     ],
     startNodeId: 'hub',
     goalNodeId: 'goal',
@@ -51,7 +54,7 @@ describe('aStar', () => {
     expect(discovery.discoveredNodeIds.has('goal')).toBe(false)
 
     const ctx: StrategyContext = { graph, discovery, walker, memory: undefined, memoryLevel: 0 }
-    // Both 'near' and 'far' are discovered, unvisited, and tie on edge weight — without having
+    // Both 'near' and 'far' are discovered, unvisited, and equally one hop away — without having
     // actually seen the goal, A* has no legitimate reason to prefer 'near' just because it happens
     // to be laid out closer to it.
     expect(['near', 'far']).toContain(aStar.chooseNextNode(ctx))
@@ -63,7 +66,7 @@ describe('aStar', () => {
     const discovery = discoveryWithGoalKnown(graph)
     const ctx: StrategyContext = { graph, discovery, walker, memory: undefined, memoryLevel: 0 }
 
-    // Both routes tie on weight, but 'near' is laid out close to the goal — the heuristic should favor it.
+    // Both routes tie on real distance (40), but 'near' is laid out close to the goal — the heuristic should favor it.
     expect(aStar.chooseNextNode(ctx)).toBe('near')
   })
 
@@ -79,9 +82,9 @@ describe('aStar', () => {
         { id: 'goal', isStart: false, isGoal: true, x: 30, y: 0 },
       ],
       edges: [
-        { id: 'hub--a', source: 'hub', target: 'a', weight: 1 },
-        { id: 'a--b', source: 'a', target: 'b', weight: 1 },
-        { id: 'b--goal', source: 'b', target: 'goal', weight: 1 },
+        { id: 'hub--a', source: 'hub', target: 'a' },
+        { id: 'a--b', source: 'a', target: 'b' },
+        { id: 'b--goal', source: 'b', target: 'goal' },
       ],
       startNodeId: 'hub',
       goalNodeId: 'goal',

@@ -6,14 +6,20 @@ import { breadthFirstSearch } from './breadthFirstSearch'
 import type { StrategyContext } from './types'
 
 function branchingGraph(): Graph {
-  // hub -- near -- far, plus hub -- side (a cheap-weight detour that BFS should ignore since it only counts hops)
+  // hub -- near -- far, plus hub -- side (a short detour that BFS should ignore since it only counts hops)
   const adjacency = { hub: ['near', 'side'], near: ['hub', 'far'], far: ['near'], side: ['hub'] }
+  const positions: Record<string, { x: number; y: number }> = {
+    hub: { x: 0, y: 0 },
+    near: { x: 9, y: 0 },
+    far: { x: 18, y: 0 },
+    side: { x: 1, y: 0 },
+  }
   return {
-    nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'hub', isGoal: id === 'far' })),
+    nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'hub', isGoal: id === 'far', ...positions[id] })),
     edges: [
-      { id: 'hub--near', source: 'hub', target: 'near', weight: 9 },
-      { id: 'near--far', source: 'near', target: 'far', weight: 9 },
-      { id: 'hub--side', source: 'hub', target: 'side', weight: 1 },
+      { id: 'hub--near', source: 'hub', target: 'near' },
+      { id: 'near--far', source: 'near', target: 'far' },
+      { id: 'hub--side', source: 'hub', target: 'side' },
     ],
     startNodeId: 'hub',
     goalNodeId: 'far',

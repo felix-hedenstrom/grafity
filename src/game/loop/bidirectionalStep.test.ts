@@ -6,16 +6,23 @@ import { createWalker } from '../walker/walkerLogic'
 import { commitBidirectionalHop, decideBidirectionalHop, hasMet } from './bidirectionalStep'
 
 function chainGraph(): Graph {
-  // a - b - c - d - e, start 'a', exit 'e'
+  // a - b - c - d - e, start 'a', exit 'e', evenly spaced one unit apart
   const adjacency = { a: ['b'], b: ['a', 'c'], c: ['b', 'd'], d: ['c', 'e'], e: ['d'] }
+  const positions: Record<string, { x: number; y: number }> = {
+    a: { x: 0, y: 0 },
+    b: { x: 1, y: 0 },
+    c: { x: 2, y: 0 },
+    d: { x: 3, y: 0 },
+    e: { x: 4, y: 0 },
+  }
   const edges = [
-    { id: 'a--b', source: 'a', target: 'b', weight: 1 },
-    { id: 'b--c', source: 'b', target: 'c', weight: 1 },
-    { id: 'c--d', source: 'c', target: 'd', weight: 1 },
-    { id: 'd--e', source: 'd', target: 'e', weight: 1 },
+    { id: 'a--b', source: 'a', target: 'b' },
+    { id: 'b--c', source: 'b', target: 'c' },
+    { id: 'c--d', source: 'c', target: 'd' },
+    { id: 'd--e', source: 'd', target: 'e' },
   ]
   return {
-    nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'a', isGoal: id === 'e' })),
+    nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'a', isGoal: id === 'e', ...positions[id] })),
     edges,
     startNodeId: 'a',
     goalNodeId: 'e',

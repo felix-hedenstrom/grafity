@@ -1,11 +1,15 @@
 import type { Graph, NodeId } from '../graph/types'
 
 function buildWeightedAdjacency(graph: Graph): Map<NodeId, Array<{ id: NodeId; weight: number }>> {
+  const nodesById = new Map(graph.nodes.map((n) => [n.id, n]))
   const map = new Map<NodeId, Array<{ id: NodeId; weight: number }>>()
   for (const id of Object.keys(graph.adjacency)) map.set(id, [])
   for (const edge of graph.edges) {
-    map.get(edge.source)?.push({ id: edge.target, weight: edge.weight })
-    map.get(edge.target)?.push({ id: edge.source, weight: edge.weight })
+    const a = nodesById.get(edge.source)
+    const b = nodesById.get(edge.target)
+    const weight = Math.hypot((a?.x ?? 0) - (b?.x ?? 0), (a?.y ?? 0) - (b?.y ?? 0))
+    map.get(edge.source)?.push({ id: edge.target, weight })
+    map.get(edge.target)?.push({ id: edge.source, weight })
   }
   return map
 }
@@ -133,12 +137,12 @@ export function uniformWeight(): number {
   return 1
 }
 
-/** The graph's real edge weight — turns nextHopToward into Dijkstra (or A*, with a heuristic). */
+/** The real geometric distance between the two nodes — turns nextHopToward into Dijkstra (or A*, with a heuristic). */
 export function actualWeight(edgeWeight: number): number {
   return edgeWeight
 }
 
-/** Straight-line distance between two nodes' laid-out positions — a gameplay heuristic for A*, not a formally admissible one (edge weight is reshaped by percentile rank, not kept as literal pixel distance, so it can diverge from real geometry), but it reliably biases the search toward the goal. */
+/** Straight-line distance between two nodes' laid-out positions — a genuinely admissible A* heuristic, since edge cost is itself the real Euclidean distance, so by the triangle inequality no real path can ever be shorter than this estimate. */
 export function straightLineDistance(a: NodeId, b: NodeId, nodesById: Map<NodeId, { x?: number; y?: number }>): number {
   const nodeA = nodesById.get(a)
   const nodeB = nodesById.get(b)

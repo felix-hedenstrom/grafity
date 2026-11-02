@@ -10,18 +10,11 @@ import { edgeId } from './types'
 const EXTRA_EDGE_RATIO = 0.4
 
 /** How many random "attractor" points pull/push sampled points during the density warp — see warpPoints. */
-const WARP_ATTRACTOR_COUNT = 3
-/** How strongly each attractor pulls (positive) or pushes (negative) nearby points, as a fraction of the canvas size — tunable for feel; higher spreads edge weight further apart. */
-const WARP_STRENGTH = 0.5
-/** Falloff radius for an attractor's pull/push, as a fraction of canvas width — points much farther than this from an attractor are barely affected by it. */
-const WARP_FALLOFF_RATIO = 0.25
-
-/** Target ratio between a graph's single longest and single shortest edge weight, after reshapeWeights — grows with the square of nodeCount so bigger graphs feel proportionally more varied, not just longer. */
-function weightRatioForNodeCount(nodeCount: number): number {
-  return (nodeCount * nodeCount) / 5
-}
-/** How aggressively reshapeWeights compresses the middle of the distribution and stretches the tails — higher means the weightRatioForNodeCount extremes are reached by fewer, more extreme edges, while more of the pack stays clustered near the median. */
-const WEIGHT_TAIL_EXPONENT = 4
+const WARP_ATTRACTOR_COUNT = 5
+/** How strongly each attractor pulls (positive) or pushes (negative) nearby points, as a fraction of the canvas size — tunable for feel; higher spreads edge length further apart. Raised from the old 0.5 now that edge weight is real distance (no reshapeWeights step widening the spread afterward), so strategies that care about cost still see meaningfully different routes. */
+const WARP_STRENGTH = 1.4
+/** Falloff radius for an attractor's pull/push, as a fraction of canvas width — points much farther than this from an attractor are barely affected by it. Widened alongside WARP_STRENGTH so denser/sparser regions span more of the canvas, not just small pockets around each attractor. */
+const WARP_FALLOFF_RATIO = 0.4
 
 /** Clarity is a one-time, on/off unlock — buying it spreads nodes this much farther apart at generation time. */
 export const CLARITY_SPACING_MULTIPLIER = 1.6
@@ -111,12 +104,13 @@ function computeBounds(points: Point[]): { width: number; height: number } {
 }
 
 /**
- * Poisson-disk sampling alone produces near-uniform spacing, so Delaunay edge lengths (and thus
- * weights) would all cluster in a narrow band. This pulls points toward — or pushes them away
- * from — a handful of random attractors, in place, so some regions end up dense (short, cheap
- * edges) and others sparse (long, expensive edges), widening the weight spread considerably.
- * Runs before triangulation, so Delaunay (and every edge length derived from it) sees only the
- * final warped positions — nothing downstream needs to know this step happened.
+ * Poisson-disk sampling alone produces near-uniform spacing, so Delaunay edge lengths (which,
+ * since edge weight = real distance, are also edge weights) would all cluster in a narrow band.
+ * This pulls points toward — or pushes them away from — a handful of random attractors, in place,
+ * so some regions end up dense (short, cheap edges) and others sparse (long, expensive edges),
+ * widening the edge length spread considerably. Runs before triangulation, so Delaunay (and every
+ * edge length derived from it) sees only the final warped positions — nothing downstream needs to
+ * know this step happened.
  */
 function warpPoints(points: Point[], width: number, height: number, rng: Rng): void {
   const falloffRadius = width * WARP_FALLOFF_RATIO
@@ -140,31 +134,6 @@ function warpPoints(points: Point[], width: number, height: number, rng: Rng): v
     p.x += dx
     p.y += dy
   }
-}
-
-/**
- * Re-expresses every edge's weight by its percentile rank among this graph's edges, rather than
- * its raw warped distance — so the final shortest:longest ratio (weightRatioForNodeCount) and how rare the
- * extremes are (WEIGHT_TAIL_EXPONENT) are exact and deterministic every single graph, regardless
- * of how much the random warp happened to spread things out that run. The median-ranked edge
- * keeps (approximately) its real raw distance as its weight, so the "typical" edge's pace is
- * unaffected — only the shape of the spread around it is reshaped. Edges already hold their raw
- * distance as a provisional weight (set by connect()); this overwrites it in place.
- */
-function reshapeWeights(edges: GraphEdge[], nodeCount: number): void {
-  if (edges.length <= 1) return
-
-  const weightRatio = weightRatioForNodeCount(nodeCount)
-  const sorted = [...edges].sort((a, b) => a.weight - b.weight)
-  const medianRaw = sorted[Math.floor((sorted.length - 1) / 2)].weight
-  const n = sorted.length
-
-  sorted.forEach((edge, i) => {
-    const p = i / (n - 1)
-    const x = 2 * p - 1
-    const shaped = 0.5 + 0.5 * Math.sign(x) * Math.abs(x) ** WEIGHT_TAIL_EXPONENT
-    edge.weight = Math.max(1, Math.round(medianRaw * weightRatio ** (shaped - 0.5)))
-  })
 }
 
 function findFarthestNode(from: NodeId, adjacency: Record<NodeId, NodeId[]>): NodeId {
@@ -219,13 +188,12 @@ export function generatePlanarGraph(nodeCount: number, rng: Rng = Math.random, c
   const adjacency: Record<NodeId, NodeId[]> = {}
   for (const id of nodeIds) adjacency[id] = []
 
-  function connect(aIndex: number, bIndex: number, distance: number): void {
+  function connect(aIndex: number, bIndex: number): void {
     const a = nodeIds[aIndex]
     const b = nodeIds[bIndex]
     const key = edgeId(a, b)
     if (edgesByKey.has(key)) return
-    const weight = Math.max(1, Math.round(distance))
-    edgesByKey.set(key, { id: key, source: a, target: b, weight })
+    edgesByKey.set(key, { id: key, source: a, target: b })
     adjacency[a].push(b)
     adjacency[b].push(a)
   }
@@ -248,7 +216,7 @@ export function generatePlanarGraph(nodeCount: number, rng: Rng = Math.random, c
     const rootB = find(edge.b)
     if (rootA !== rootB) {
       parent[rootA] = rootB
-      connect(edge.a, edge.b, edge.distance)
+      connect(edge.a, edge.b)
     } else {
       remainingEdges.push(edge)
     }
@@ -257,10 +225,8 @@ export function generatePlanarGraph(nodeCount: number, rng: Rng = Math.random, c
   const extraEdgeCount = Math.round(nodeCount * EXTRA_EDGE_RATIO)
   shuffle(remainingEdges, rng)
   for (const edge of remainingEdges.slice(0, extraEdgeCount)) {
-    connect(edge.a, edge.b, edge.distance)
+    connect(edge.a, edge.b)
   }
-
-  reshapeWeights(Array.from(edgesByKey.values()), nodeCount)
 
   const startNodeId = nodeIds[0]
   const goalNodeId = findFarthestNode(startNodeId, adjacency)

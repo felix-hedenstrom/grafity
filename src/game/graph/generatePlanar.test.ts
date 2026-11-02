@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mulberry32 } from '../../utils/rng'
 import { generatePlanarGraph } from './generatePlanar'
 import type { NodeId } from './types'
+import { getEdgeWeight } from './types'
 
 function reachableFrom(start: NodeId, adjacency: Record<NodeId, NodeId[]>): Set<NodeId> {
   const visited = new Set<NodeId>([start])
@@ -109,24 +110,15 @@ describe('generatePlanarGraph', () => {
     expect(() => generatePlanarGraph(0)).toThrow()
   })
 
-  it('assigns edge weights with roughly a 20x spread between shortest and longest, but keeps most edges clustered near the median', () => {
-    const graph = generatePlanarGraph(120, mulberry32(5))
-    const weights = graph.edges.map((e) => e.weight).sort((a, b) => a - b)
-    for (const w of weights) {
-      expect(w).toBeGreaterThanOrEqual(1)
-      expect(Number.isInteger(w)).toBe(true)
+  it('gives every edge a weight equal to the real Euclidean distance between its endpoints', () => {
+    const graph = generatePlanarGraph(60, mulberry32(5))
+    const nodesById = new Map(graph.nodes.map((n) => [n.id, n]))
+    for (const edge of graph.edges) {
+      const a = nodesById.get(edge.source)!
+      const b = nodesById.get(edge.target)!
+      const expected = Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0))
+      expect(getEdgeWeight(graph, edge.source, edge.target)).toBeCloseTo(expected)
     }
-
-    const min = weights[0]
-    const max = weights[weights.length - 1]
-    expect(max / min).toBeGreaterThan(10)
-    expect(max / min).toBeLessThan(30)
-
-    // The middle 80% (10th-90th percentile) should span a much narrower ratio than the
-    // full population — i.e. the 20x extremes are rare, not typical.
-    const p10 = weights[Math.floor(weights.length * 0.1)]
-    const p90 = weights[Math.floor(weights.length * 0.9)]
-    expect(p90 / p10).toBeLessThan(8)
   })
 
   it('spreads nodes farther apart when Clarity is enabled, without changing the node count', () => {

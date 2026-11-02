@@ -3,15 +3,27 @@ import type { Graph } from '../graph/types'
 import { actualWeight, nextHopToward, straightLineDistance, uniformWeight } from './pathfinding'
 
 function lineGraph(): Graph {
-  // a -1- b -5- c -1- d, plus a direct shortcut a--d weighing 20 (longer by weight, shorter by hops)
-  const adjacency = { a: ['b', 'd'], b: ['a', 'c'], c: ['b', 'd'], d: ['c', 'a'] }
+  // Chain a -1- b -5- c -1- d (3 hops, total distance 7), plus a decoy 2-hop detour a -- x -- d that's
+  // fewer hops but, since x sits well off to the side, far more costly in real distance (~19.9) —
+  // this is the only way to make a shorter-hop route pricier than a longer one without violating the
+  // triangle inequality: a literal direct a--d edge could never cost more than the chain, since any
+  // path's cost is lower-bounded by the straight-line distance between its endpoints.
+  const adjacency = { a: ['b', 'x'], b: ['a', 'c'], c: ['b', 'd'], d: ['c', 'x'], x: ['a', 'd'] }
+  const positions: Record<string, { x: number; y: number }> = {
+    a: { x: 0, y: 0 },
+    b: { x: 1, y: 0 },
+    c: { x: 1, y: 5 },
+    d: { x: 1, y: 6 },
+    x: { x: 10, y: 3 },
+  }
   return {
-    nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'a', isGoal: id === 'd' })),
+    nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'a', isGoal: id === 'd', ...positions[id] })),
     edges: [
-      { id: 'a--b', source: 'a', target: 'b', weight: 1 },
-      { id: 'b--c', source: 'b', target: 'c', weight: 5 },
-      { id: 'c--d', source: 'c', target: 'd', weight: 1 },
-      { id: 'a--d', source: 'a', target: 'd', weight: 20 },
+      { id: 'a--b', source: 'a', target: 'b' },
+      { id: 'b--c', source: 'b', target: 'c' },
+      { id: 'c--d', source: 'c', target: 'd' },
+      { id: 'a--x', source: 'a', target: 'x' },
+      { id: 'd--x', source: 'd', target: 'x' },
     ],
     startNodeId: 'a',
     goalNodeId: 'd',
@@ -25,27 +37,29 @@ describe('nextHopToward', () => {
   })
 
   it('BFS (uniform weight) takes the fewest-hops route, ignoring edge weight', () => {
-    // a->d direct is 1 hop (weight 20) vs a->b->c->d is 3 hops (weight 7) — BFS should prefer the 1-hop route.
+    // a->x->d is 2 hops (distance ~19.9) vs a->b->c->d is 3 hops (distance 7) — BFS should prefer the 2-hop route.
     const next = nextHopToward(lineGraph(), 'a', (id) => id === 'd', uniformWeight)
-    expect(next).toBe('d')
+    expect(next).toBe('x')
   })
 
   it('Dijkstra (actual weight) takes the cheapest route even if it has more hops', () => {
-    // a->d direct costs 20; a->b->c->d costs 1+5+1=7 — Dijkstra should prefer the cheaper multi-hop route.
+    // a->x->d costs ~19.9; a->b->c->d costs 1+5+1=7 — Dijkstra should prefer the cheaper multi-hop route.
     const next = nextHopToward(lineGraph(), 'a', (id) => id === 'd', actualWeight)
     expect(next).toBe('b')
   })
 
   it('returns the correct single-step hop toward a multi-step target', () => {
     const next = nextHopToward(lineGraph(), 'a', (id) => id === 'c', actualWeight)
-    expect(next).toBe('b') // a->b->c is cheaper (1+5=6) than a->d->c (20+1=21)
+    expect(next).toBe('b') // a->b->c is cheaper (1+5=6) than a->x->d->c (~19.9+9.5+1)
   })
 
   it('is biased toward lower heuristic nodes when one is supplied', () => {
     const graph = lineGraph()
-    // A heuristic that makes 'd' look very close from 'a' should make the direct (expensive) edge preferred.
-    const next = nextHopToward(graph, 'a', (id) => id === 'd', actualWeight, (id) => (id === 'd' ? 0 : 100))
-    expect(next).toBe('d')
+    // A heuristic that makes 'x' and 'd' both look very close from 'a' should push the search down
+    // the decoy route and let it commit to 'd' as soon as it's reached, before the cheaper chain
+    // route via 'b'/'c' ever gets the chance to relax a better path to 'd'.
+    const next = nextHopToward(graph, 'a', (id) => id === 'd', actualWeight, (id) => (id === 'x' || id === 'd' ? -1000 : 100))
+    expect(next).toBe('x')
   })
 
   it('returns null when no reachable node satisfies the target', () => {
@@ -56,14 +70,14 @@ describe('nextHopToward', () => {
 
   it('never expands through a node isReachable rejects, even if it would otherwise be the shortest route', () => {
     const graph = lineGraph()
-    // 'c' is undiscovered — the cheap a->b->c->d route is off-limits, so it must take the pricier direct edge.
+    // 'c' is undiscovered — the cheap a->b->c->d route is off-limits, so it must take the pricier decoy route.
     const next = nextHopToward(graph, 'a', (id) => id === 'd', actualWeight, undefined, (id) => id !== 'c')
-    expect(next).toBe('d')
+    expect(next).toBe('x')
   })
 
   it('cannot target a node isReachable rejects, even as a direct neighbor', () => {
     const graph = lineGraph()
-    // 'd' is a direct, cheap neighbor of 'a', but marked unreachable (undiscovered) — must route the long way via 'b'/'c' isn't possible either without going through 'd', so nothing satisfies the target.
+    // 'd' itself is marked unreachable — no route can ever reach it, regardless of path, so nothing satisfies the target.
     const next = nextHopToward(graph, 'a', (id) => id === 'd', actualWeight, undefined, (id) => id !== 'd')
     expect(next).toBeNull()
   })

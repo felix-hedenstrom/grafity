@@ -15,21 +15,22 @@ import { startWalkerScheduler } from './walkerScheduler'
  * A tiny straight-line graph (start -- A -- goal), used to deterministically exercise the redirect
  * flow: with Math.random mocked to always return 0, randomWalk's pickRandom always picks each
  * node's first adjacency entry, so ordering the arrays below fully controls which way every walker
- * moves. The A--goal edge is deliberately lighter than A--start: at UFO_SPEED_RATIO_BASE, a UFO's
- * single A->goal hop and the Spaceship's own two full-speed hops (start->A->goal) would otherwise
- * land at the exact same instant when both edges share a weight, leaving no window to observe the
- * mid-flight redirect state the 'exit redirect' tests below check for.
+ * moves. The A--goal distance is deliberately shorter than A--start (edge weight is now derived
+ * from node position, not a separate field): at UFO_SPEED_RATIO_BASE, a UFO's single A->goal hop
+ * and the Spaceship's own two full-speed hops (start->A->goal) would otherwise land at the exact
+ * same instant when both edges share a distance, leaving no window to observe the mid-flight
+ * redirect state the 'exit redirect' tests below check for.
  */
 function buildLineGraph(): Graph {
   return {
     nodes: [
       { id: 'start', isStart: true, isGoal: false, x: 0, y: 0 },
-      { id: 'A', isStart: false, isGoal: false, x: 100, y: 0 },
-      { id: 'goal', isStart: false, isGoal: true, x: 200, y: 0 },
+      { id: 'A', isStart: false, isGoal: false, x: 60, y: 0 },
+      { id: 'goal', isStart: false, isGoal: true, x: 80, y: 0 },
     ],
     edges: [
-      { id: 'A--start', source: 'start', target: 'A', weight: 60 },
-      { id: 'A--goal', source: 'A', target: 'goal', weight: 20 },
+      { id: 'A--start', source: 'start', target: 'A' },
+      { id: 'A--goal', source: 'A', target: 'goal' },
     ],
     startNodeId: 'start',
     goalNodeId: 'goal',

@@ -13,6 +13,8 @@ import { useRunStore } from '../../store/useRunStore'
 import { Minimap } from '../Minimap/Minimap'
 import { WalkerToken } from '../WalkerToken/WalkerToken'
 import styles from './GraphView.module.css'
+import { useInterpolatedPositions } from './useInterpolatedPositions'
+import type { WalkerPositionInput } from './useInterpolatedPositions'
 import { useSmoothedBounds } from './useSmoothedBounds'
 
 /** Which CSS class visualizes each kind of highlight group — shared across every strategy, since Node Memory now applies to all of them. */
@@ -106,6 +108,16 @@ export function GraphView() {
   const nodesById = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph])
   const degreeByNodeId = useMemo(() => new Map(graph.nodes.map((n) => [n.id, graph.adjacency[n.id]?.length ?? 0])), [graph])
 
+  // Continuous (x,y) per walker, tracking the same travelMs/startedAt progress that already
+  // drives WalkerToken's CSS glide between nodes — using raw currentNodeId here would freeze
+  // the camera's targets on the node a walker just left for the whole hop, then snap on arrival,
+  // even though the walker is visibly gliding across the edge the entire time.
+  const positionInputs = useMemo<WalkerPositionInput[]>(
+    () => [...walkers, ...(walker2 ? [walker2] : [])].map((w, idx) => ({ currentNodeId: w.currentNodeId, transit: (idx < walkers.length ? walkerTransits[idx] : walker2Transit) ?? null })),
+    [walkers, walker2, walkerTransits, walker2Transit],
+  )
+  const interpolatedPositions = useInterpolatedPositions(positionInputs, nodesById)
+
   // Bounds come from the whole graph (not just discovered nodes), so the view never rescales as
   // fog lifts — it just shows more of a frame that was already fixed. Below MAX_VIEW_SIZE that
   // frame is the whole graph, static for its lifetime; past it, node circles would shrink to
@@ -113,21 +125,13 @@ export function GraphView() {
   // centered on the main walker (walkers[0]) — centering on the average of every walker's
   // position instead could land the camera on empty space between two widely spread-out walkers,
   // with neither actually on screen.
-  const focus = useMemo(() => {
-    const mainPos = walkers[0] ? nodesById.get(walkers[0].currentNodeId) : undefined
-    return { x: mainPos?.x ?? 0, y: mainPos?.y ?? 0 }
-  }, [walkers, nodesById])
+  const focus = interpolatedPositions[0] ?? { x: 0, y: 0 }
   // Every other active walker, used only to size the window — not to move its center.
-  const otherWalkerPositions = useMemo(
-    () =>
-      [...walkers.slice(1), ...(walker2 ? [walker2] : [])]
-        .map((w) => nodesById.get(w.currentNodeId))
-        .filter((p): p is NonNullable<typeof p> => p != null)
-        .map((p) => ({ x: p.x ?? 0, y: p.y ?? 0 })),
-    [walkers, walker2, nodesById],
-  )
-  const dynamicViewSize = useMemo(() => computeDynamicViewSize(focus, otherWalkerPositions), [focus, otherWalkerPositions])
-  const targetBounds = useMemo(() => computeViewBounds(graph, focus.x, focus.y, dynamicViewSize), [graph, focus, dynamicViewSize])
+  const otherWalkerPositions = interpolatedPositions.slice(1)
+  // Not memoized: focus/otherWalkerPositions now change continuously (every interpolation
+  // frame), so memoizing against them would never hit anyway.
+  const dynamicViewSize = computeDynamicViewSize(focus, otherWalkerPositions)
+  const targetBounds = computeViewBounds(graph, focus.x, focus.y, dynamicViewSize)
   // Smoothly glides toward targetBounds instead of snapping — targetBounds recenters on the main
   // walker every tick once windowed, and jumping the viewBox there instantly would read as a
   // jarring teleport rather than the walker simply moving.

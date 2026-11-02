@@ -11,10 +11,11 @@ import { useProgressionStore } from './useProgressionStore'
 
 type RunStatus = 'exploring' | 'celebrating'
 
-/** Where a walker is headed and how long the crossing takes — lets the UI animate the glide across the edge's real travel time instead of snapping on arrival. Set by the scheduler at departure, cleared on arrival. */
+/** Where a walker is headed and how long the crossing takes — lets the UI animate the glide across the edge's real travel time instead of snapping on arrival. Set by the scheduler at departure, cleared on arrival. `startedAt` (Date.now() at departure) lets callers compute how far across the edge the walker currently is, for things like camera tracking that need a continuous position rather than the discrete currentNodeId. */
 export interface WalkerTransit {
   nextNodeId: NodeId
   travelMs: number
+  startedAt: number
 }
 
 interface RunState {

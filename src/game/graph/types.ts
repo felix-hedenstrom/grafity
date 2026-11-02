@@ -15,8 +15,6 @@ export interface GraphEdge {
   id: string
   source: NodeId
   target: NodeId
-  /** The edge's travel distance — derived from its real geometric length, but reshaped by percentile rank within the graph (see reshapeWeights in generatePlanar.ts) so the shortest:longest ratio across the whole graph is controlled and extremes are rare. Used both as pathfinding cost for Dijkstra/A*, and as the distance the speed system divides by to pace movement. */
-  weight: number
 }
 
 export interface Graph {
@@ -31,8 +29,11 @@ export function edgeId(a: NodeId, b: NodeId): string {
   return a < b ? `${a}--${b}` : `${b}--${a}`
 }
 
-/** The weight (real distance) of the edge between two adjacent nodes. */
+/** The Euclidean distance between two adjacent nodes' laid-out positions — used directly as both pathfinding cost and the distance the speed system divides by to pace movement. */
 export function getEdgeWeight(graph: Graph, a: NodeId, b: NodeId): number {
-  const key = edgeId(a, b)
-  return graph.edges.find((edge) => edge.id === key)?.weight ?? 0
+  const nodeA = graph.nodes.find((node) => node.id === a)
+  const nodeB = graph.nodes.find((node) => node.id === b)
+  const dx = (nodeA?.x ?? 0) - (nodeB?.x ?? 0)
+  const dy = (nodeA?.y ?? 0) - (nodeB?.y ?? 0)
+  return Math.hypot(dx, dy)
 }

@@ -6,16 +6,22 @@ import { dijkstra } from './dijkstra'
 import type { StrategyContext } from './types'
 
 function weightedForkGraph(): Graph {
-  // hub -(1)- cheap -(1)- goal
-  // hub -(20)- pricey -(1)- goal
+  // hub -(1)- cheap -(1)- goal, laid out on a short straight line
+  // hub -(20)- pricey -(~20.1)- goal, laid out via a node far off to the side
   const adjacency = { hub: ['cheap', 'pricey'], cheap: ['hub', 'goal'], pricey: ['hub', 'goal'], goal: ['cheap', 'pricey'] }
+  const positions: Record<string, { x: number; y: number }> = {
+    hub: { x: 0, y: 0 },
+    cheap: { x: 1, y: 0 },
+    goal: { x: 2, y: 0 },
+    pricey: { x: 0, y: 20 },
+  }
   return {
-    nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'hub', isGoal: id === 'goal' })),
+    nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'hub', isGoal: id === 'goal', ...positions[id] })),
     edges: [
-      { id: 'hub--cheap', source: 'hub', target: 'cheap', weight: 1 },
-      { id: 'cheap--goal', source: 'cheap', target: 'goal', weight: 1 },
-      { id: 'hub--pricey', source: 'hub', target: 'pricey', weight: 20 },
-      { id: 'pricey--goal', source: 'pricey', target: 'goal', weight: 1 },
+      { id: 'hub--cheap', source: 'hub', target: 'cheap' },
+      { id: 'cheap--goal', source: 'cheap', target: 'goal' },
+      { id: 'hub--pricey', source: 'hub', target: 'pricey' },
+      { id: 'pricey--goal', source: 'pricey', target: 'goal' },
     ],
     startNodeId: 'hub',
     goalNodeId: 'goal',

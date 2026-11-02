@@ -120,7 +120,7 @@ function departSearcher(i: number): void {
   const edgeWeight = getEdgeWeight(runState.graph, walker.currentNodeId, nextNodeId)
   const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight, i === 0)
   useRunStore.setState((s) => ({
-    walkerTransits: s.walkerTransits.map((t, idx) => (idx === i ? { nextNodeId, travelMs } : t)),
+    walkerTransits: s.walkerTransits.map((t, idx) => (idx === i ? { nextNodeId, travelMs, startedAt: Date.now() } : t)),
   }))
   searcherTimers[i] = setTimeout(() => arriveSearcher(i, nextNodeId), travelMs)
 }
@@ -281,8 +281,8 @@ function departBidirectional(slot: BidirectionalSlot): void {
   const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight, slot === 'forward')
   useRunStore.setState((s) =>
     slot === 'forward'
-      ? { walkerTransits: s.walkerTransits.map((t, idx) => (idx === 0 ? { nextNodeId, travelMs } : t)) }
-      : { walker2Transit: { nextNodeId, travelMs } },
+      ? { walkerTransits: s.walkerTransits.map((t, idx) => (idx === 0 ? { nextNodeId, travelMs, startedAt: Date.now() } : t)) }
+      : { walker2Transit: { nextNodeId, travelMs, startedAt: Date.now() } },
   )
   setBidirectionalTimer(slot, setTimeout(() => arriveBidirectional(slot, nextNodeId), travelMs))
 }
