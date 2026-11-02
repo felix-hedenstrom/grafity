@@ -52,6 +52,8 @@ interface ProgressionState {
   exitBonusLevel: number
   /** Whether the minimap is currently shown — only meaningful once 'minimap' is in purchasedUpgradeIds; toggled freely afterward, no re-purchase needed. */
   minimapEnabled: boolean
+  /** Display preference, independent of OS settings — defaults to dark. */
+  themeMode: 'dark' | 'light'
   earnCurrency: (amount: number) => void
   purchaseUpgrade: (upgradeId: string) => boolean
   purchaseMomentumLevel: () => boolean
@@ -71,6 +73,7 @@ interface ProgressionState {
   purchaseClarity: () => boolean
   purchaseMinimap: () => boolean
   toggleMinimap: () => void
+  toggleTheme: () => void
   setActiveStrategy: (strategyId: string) => void
   /** Jumps the current level to any size from STARTING_GRAPH_NODE_COUNT up to highestGraphNodeCount — a no-op outside that range. Solving from a lower level climbs back up normally and will eventually pass the old high again. */
   selectLevel: (nodeCount: number) => void
@@ -107,6 +110,7 @@ export const useProgressionStore = create<ProgressionState>()(
       revisitBonusLevel: 0,
       exitBonusLevel: 0,
       minimapEnabled: true,
+      themeMode: 'dark',
 
       earnCurrency: (amount) => set((state) => ({ currency: earn(state.currency, amount) })),
 
@@ -315,6 +319,8 @@ export const useProgressionStore = create<ProgressionState>()(
 
       toggleMinimap: () => set((state) => ({ minimapEnabled: !state.minimapEnabled })),
 
+      toggleTheme: () => set((state) => ({ themeMode: state.themeMode === 'dark' ? 'light' : 'dark' })),
+
       setActiveStrategy: (strategyId) => {
         const state = get()
         if (!isOwnedStrategy(strategyId, state.purchasedUpgradeIds)) return
@@ -344,6 +350,7 @@ export const useProgressionStore = create<ProgressionState>()(
           revisitBonusLevel: 0,
           exitBonusLevel: 0,
           minimapEnabled: true,
+          themeMode: 'dark',
         }),
     }),
     {

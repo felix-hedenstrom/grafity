@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { withSchedulerSuspended } from '../../game/loop/walkerScheduler'
 import { useAchievementStore } from '../../store/useAchievementStore'
 import { useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
@@ -23,15 +24,19 @@ export function ResetButton() {
       setArmed(true)
       return
     }
-    resetProgress()
-    useRunStore.getState().resetWithNewGraph()
-    resetAchievements()
+    // Suspended so the walker scheduler reconciles once against the final reset state, instead of
+    // reacting mid-reset to a transient mix of new progression + old graph (or vice versa).
+    withSchedulerSuspended(() => {
+      resetProgress()
+      useRunStore.getState().resetWithNewGraph()
+      resetAchievements()
+    })
     setArmed(false)
   }
 
   return (
     <button type="button" className={armed ? styles.confirm : styles.reset} onClick={handleClick}>
-      {armed ? 'Click again to confirm' : 'Reset progress'}
+      {armed ? 'Click again to confirm' : 'Hard reset progress'}
     </button>
   )
 }

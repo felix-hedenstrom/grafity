@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { ACHIEVEMENTS } from '../../game/achievements/definitions'
+import { ResetButton } from '../Controls/ResetButton'
 import {
   AMPLIFIER_PERCENT_PER_LEVEL,
   computeDiscoveryRewardPerNode,
@@ -71,7 +72,7 @@ function canAffordOneTime(upgrade: { cost: number; minLevel: number }, owned: bo
   return currencyAmount >= upgrade.cost
 }
 
-const TABS = ['Algorithms', 'Insight', 'Memory', 'Growth', 'Speed', 'Display', 'Level', 'Achievements'] as const
+const TABS = ['Algorithms', 'Insight', 'Memory', 'Growth', 'Speed', 'Display', 'Achievements', 'Options'] as const
 type Tab = (typeof TABS)[number]
 
 /** How many upgrades are currently purchasable in each tab — drives the "(N)" badge, omitted entirely when N is 0. */
@@ -153,7 +154,6 @@ export function Shop() {
         })}
       </div>
       <div className={styles.tabContent}>
-        {activeTab === 'Level' && <LevelTab />}
         {activeTab === 'Algorithms' && <AlgorithmsTab />}
         {activeTab === 'Insight' && <InsightTab />}
         {activeTab === 'Memory' && <MemoryTab />}
@@ -161,15 +161,18 @@ export function Shop() {
         {activeTab === 'Speed' && <SpeedTab />}
         {activeTab === 'Display' && <DisplayTab />}
         {activeTab === 'Achievements' && <AchievementsTab />}
+        {activeTab === 'Options' && <OptionsTab />}
       </div>
     </div>
   )
 }
 
-function LevelTab() {
+function OptionsTab() {
   const graphNodeCount = useProgressionStore((s) => s.graphNodeCount)
   const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
   const selectLevel = useProgressionStore((s) => s.selectLevel)
+  const themeMode = useProgressionStore((s) => s.themeMode)
+  const toggleTheme = useProgressionStore((s) => s.toggleTheme)
   const resetWithNewGraph = useRunStore((s) => s.resetWithNewGraph)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -203,6 +206,25 @@ function LevelTab() {
             Go
           </button>
         </form>
+      </div>
+      <div className={styles.card}>
+        <div className={styles.name}>Display</div>
+        <div className={styles.description}>{themeMode === 'dark' ? 'Dark mode is on.' : 'Light mode is on.'}</div>
+        <button type="button" className={styles.buyButton} onClick={toggleTheme}>
+          {themeMode === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode'}
+        </button>
+      </div>
+      <div className={styles.card}>
+        <div className={styles.name}>Reset level</div>
+        <div className={styles.description}>Restarts the current level with a fresh graph. Currency and upgrades are untouched.</div>
+        <button type="button" className={styles.buyButton} onClick={() => resetWithNewGraph()}>
+          Reset level
+        </button>
+      </div>
+      <div className={styles.card}>
+        <div className={styles.name}>Hard reset progress</div>
+        <div className={styles.description}>Wipes currency, upgrades, achievements, and the level back to the very start.</div>
+        <ResetButton />
       </div>
     </div>
   )

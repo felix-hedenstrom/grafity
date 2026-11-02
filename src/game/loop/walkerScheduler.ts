@@ -39,6 +39,7 @@ let celebrationTimer: TimerId
 let lastSeenGraph: Graph | null = null
 let lastSeenStrategyId: string | null = null
 let lastSeenHasWalker2 = false
+let suspended = false
 
 function buildSpeedProgression(progression: ReturnType<typeof useProgressionStore.getState>): SpeedProgression {
   return {
@@ -398,7 +399,22 @@ function startCelebrationTimer(): void {
   }, CELEBRATION_HOLD_MS)
 }
 
+/**
+ * Runs fn with reconcile() disabled, then reconciles once at the end against the final state.
+ * Used when a caller needs to mutate both useRunStore and useProgressionStore (e.g. a hard
+ * reset) — without this, reconcile would fire synchronously inside the first set() call and see
+ * a transient, inconsistent mix of new-progression/old-graph (or vice versa), scheduling walker
+ * timers against state that's about to be discarded by the second call.
+ */
+export function withSchedulerSuspended(fn: () => void): void {
+  suspended = true
+  fn()
+  suspended = false
+  reconcile()
+}
+
 function reconcile(): void {
+  if (suspended) return
   const runState = useRunStore.getState()
   const progression = useProgressionStore.getState()
 
