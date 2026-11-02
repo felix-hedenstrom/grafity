@@ -16,9 +16,11 @@ const WARP_STRENGTH = 0.5
 /** Falloff radius for an attractor's pull/push, as a fraction of canvas width — points much farther than this from an attractor are barely affected by it. */
 const WARP_FALLOFF_RATIO = 0.25
 
-/** Target ratio between a graph's single longest and single shortest edge weight, after reshapeWeights. */
-const WEIGHT_RATIO = 40
-/** How aggressively reshapeWeights compresses the middle of the distribution and stretches the tails — higher means the WEIGHT_RATIO extremes are reached by fewer, more extreme edges, while more of the pack stays clustered near the median. */
+/** Target ratio between a graph's single longest and single shortest edge weight, after reshapeWeights — grows with the square of nodeCount so bigger graphs feel proportionally more varied, not just longer. */
+function weightRatioForNodeCount(nodeCount: number): number {
+  return (nodeCount * nodeCount) / 5
+}
+/** How aggressively reshapeWeights compresses the middle of the distribution and stretches the tails — higher means the weightRatioForNodeCount extremes are reached by fewer, more extreme edges, while more of the pack stays clustered near the median. */
 const WEIGHT_TAIL_EXPONENT = 4
 
 /** Clarity is a one-time, on/off unlock — buying it spreads nodes this much farther apart at generation time. */
@@ -142,16 +144,17 @@ function warpPoints(points: Point[], width: number, height: number, rng: Rng): v
 
 /**
  * Re-expresses every edge's weight by its percentile rank among this graph's edges, rather than
- * its raw warped distance — so the final shortest:longest ratio (WEIGHT_RATIO) and how rare the
+ * its raw warped distance — so the final shortest:longest ratio (weightRatioForNodeCount) and how rare the
  * extremes are (WEIGHT_TAIL_EXPONENT) are exact and deterministic every single graph, regardless
  * of how much the random warp happened to spread things out that run. The median-ranked edge
  * keeps (approximately) its real raw distance as its weight, so the "typical" edge's pace is
  * unaffected — only the shape of the spread around it is reshaped. Edges already hold their raw
  * distance as a provisional weight (set by connect()); this overwrites it in place.
  */
-function reshapeWeights(edges: GraphEdge[]): void {
+function reshapeWeights(edges: GraphEdge[], nodeCount: number): void {
   if (edges.length <= 1) return
 
+  const weightRatio = weightRatioForNodeCount(nodeCount)
   const sorted = [...edges].sort((a, b) => a.weight - b.weight)
   const medianRaw = sorted[Math.floor((sorted.length - 1) / 2)].weight
   const n = sorted.length
@@ -160,7 +163,7 @@ function reshapeWeights(edges: GraphEdge[]): void {
     const p = i / (n - 1)
     const x = 2 * p - 1
     const shaped = 0.5 + 0.5 * Math.sign(x) * Math.abs(x) ** WEIGHT_TAIL_EXPONENT
-    edge.weight = Math.max(1, Math.round(medianRaw * WEIGHT_RATIO ** (shaped - 0.5)))
+    edge.weight = Math.max(1, Math.round(medianRaw * weightRatio ** (shaped - 0.5)))
   })
 }
 
@@ -257,7 +260,7 @@ export function generatePlanarGraph(nodeCount: number, rng: Rng = Math.random, c
     connect(edge.a, edge.b, edge.distance)
   }
 
-  reshapeWeights(Array.from(edgesByKey.values()))
+  reshapeWeights(Array.from(edgesByKey.values()), nodeCount)
 
   const startNodeId = nodeIds[0]
   const goalNodeId = findFarthestNode(startNodeId, adjacency)

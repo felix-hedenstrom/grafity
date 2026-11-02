@@ -19,13 +19,26 @@ function easeOutQuad(t: number): number {
  * teleport rather than the walker simply moving. Each time the target changes mid-flight, this
  * blends onward from wherever it currently is (not back to the start), so a steady stream of
  * per-tick target updates reads as one continuous glide rather than a series of resets.
+ *
+ * `resetKey` identifies the current graph/run — when it changes, the old target (centered on the
+ * previous graph's exit point) has nothing to do with the new one, so this snaps straight to the
+ * new target instead of gliding across two unrelated graphs.
  */
-export function useSmoothedBounds(target: GraphBounds): GraphBounds {
+export function useSmoothedBounds(target: GraphBounds, resetKey: unknown): GraphBounds {
   const [displayed, setDisplayed] = useState(target)
   const displayedRef = useRef(target)
   displayedRef.current = displayed
+  const resetKeyRef = useRef(resetKey)
 
   useEffect(() => {
+    const isReset = resetKeyRef.current !== resetKey
+    resetKeyRef.current = resetKey
+
+    if (isReset) {
+      setDisplayed(target)
+      return
+    }
+
     const from = displayedRef.current
     let startTime: number | null = null
     let rafId: number
@@ -46,7 +59,7 @@ export function useSmoothedBounds(target: GraphBounds): GraphBounds {
 
     return () => cancelAnimationFrame(rafId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target.minX, target.minY, target.width, target.height])
+  }, [target.minX, target.minY, target.width, target.height, resetKey])
 
   return displayed
 }

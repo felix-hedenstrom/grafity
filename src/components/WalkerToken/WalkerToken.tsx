@@ -80,7 +80,16 @@ export function WalkerToken({ x, y, travelMs, angle, nodeRadius, variant = 'forw
         const m = new DOMMatrixReadOnly(snapshot)
         base = (Math.atan2(m.b, m.a) * 180) / Math.PI
       }
-      setFrozenTransform(snapshot)
+      // Freeze rotation only, not the raw orbit snapshot: the orbit keyframes translate the
+      // ship out to orbit-r as well as rotating it, so the raw snapshot carries that circular
+      // offset. Transitioning from the *raw* snapshot down to rotate(angle) (zero translate)
+      // would drag that offset through the 220ms hand-off while the outer .position group is
+      // already gliding straight toward the next node — the ship visibly swings in from its
+      // orbit position instead of riding the edge line, worst on sharp turns where the orbit's
+      // (essentially arbitrary) frozen offset points nowhere near the new edge's direction. A
+      // pure rotate(base) keeps the same continuity for the angle (no rotational snap, which is
+      // what this freeze exists for) while landing the ship exactly on the node immediately.
+      setFrozenTransform(`rotate(${base}deg)`)
       const delta = ((angle - base + 540) % 360) - 180
       const next = base + delta
       unwrappedAngleRef.current = next

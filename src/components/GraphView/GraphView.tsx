@@ -128,7 +128,7 @@ export function GraphView() {
   // Smoothly glides toward targetBounds instead of snapping — targetBounds recenters on the main
   // walker every tick once windowed, and jumping the viewBox there instantly would read as a
   // jarring teleport rather than the walker simply moving.
-  const bounds = useSmoothedBounds(targetBounds)
+  const bounds = useSmoothedBounds(targetBounds, graph)
   // The minimap only earns its keep once the main view has actually had to window down to less
   // than the whole graph — on a graph that already fits, it would just be a smaller duplicate.
   const fullBounds = useMemo(() => computeGraphBounds(graph), [graph])
@@ -334,7 +334,7 @@ export function GraphView() {
               discovery.visitedNodeIds.has(node.id) ? styles.visited : '',
               node.isGoal ? styles.goal : '',
               node.isStart ? styles.start : '',
-              highlightClassByNodeId.get(node.id) ?? '',
+              isBeacon ? '' : highlightClassByNodeId.get(node.id) ?? '',
             ]
             // An inline `filter` replaces the CSS class's filter outright rather than composing
             // with it, so the per-node hue-rotate has to carry each layer's own blur along with
