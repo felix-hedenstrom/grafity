@@ -31,7 +31,7 @@ import {
   MOMENTUM_PERCENT_PER_LEVEL,
   QUICK_STEPS_BASE_COST,
   QUICK_STEPS_COST_GROWTH,
-  QUICK_STEPS_SPEED_PER_LEVEL,
+  QUICK_STEPS_PERCENT_PER_LEVEL,
   UFO_SPEED_BASE_COST,
   UFO_SPEED_COST_GROWTH,
   UFO_SPEED_MAX_LEVEL,
@@ -129,10 +129,10 @@ export const UPGRADES: UpgradeDefinition[] = [
   },
 ]
 
-/** Quick Steps is repeatable — each purchase adds a flat amount to the base travel speed, uncapped. */
+/** Quick Steps is repeatable — each purchase multiplies travel speed by another 10%, compounding, uncapped. */
 export const QUICK_STEPS_UPGRADE_INFO: RepeatableUpgradeInfo = {
   name: 'Quick Steps',
-  description: `+${QUICK_STEPS_SPEED_PER_LEVEL} travel speed per purchase.`,
+  description: `+${QUICK_STEPS_PERCENT_PER_LEVEL * 100}% travel speed per purchase.`,
   baseCost: QUICK_STEPS_BASE_COST,
   costGrowth: QUICK_STEPS_COST_GROWTH,
   minLevel: 10,

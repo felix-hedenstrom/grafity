@@ -15,7 +15,7 @@ import {
   computeDistancePerSecond,
   computeMomentumMultiplier,
   computeUfoSpeedRatio,
-  QUICK_STEPS_SPEED_PER_LEVEL,
+  QUICK_STEPS_PERCENT_PER_LEVEL,
   UFO_SPEED_MAX_LEVEL,
 } from '../../game/speed/rules'
 import { getStrategy } from '../../game/strategies'
@@ -370,7 +370,7 @@ function SpeedTab() {
 
   const now = useNow()
   const elapsedSecondsThisRun = (now - runStartedAt) / 1000
-  const quickStepsBonus = quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL
+  const quickStepsMultiplier = (1 + QUICK_STEPS_PERCENT_PER_LEVEL) ** quickStepsLevel
   const momentumMultiplier = computeMomentumMultiplier(momentumLevel, elapsedSecondsThisRun)
   const ufoSpeedRatio = computeUfoSpeedRatio(ufoSpeedLevel)
   const mainWalkerDistancePerSecond = computeDistancePerSecond({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun, mainWalkerSpeedLevel }, true)
@@ -386,7 +386,7 @@ function SpeedTab() {
         title="How speed is calculated"
         lines={[
           { label: 'Base speed', value: `${BASE_DISTANCE_PER_SECOND.toFixed(1)} distance/sec` },
-          { label: 'Quick Steps', value: `+${quickStepsBonus.toFixed(1)} distance/sec` },
+          { label: 'Quick Steps', value: `×${quickStepsMultiplier.toFixed(2)}` },
           { label: 'Momentum (this run)', value: `×${momentumMultiplier.toFixed(2)}` },
           { label: 'UFO speed ratio', value: `${Math.round(ufoSpeedRatio * 100)}% of Spaceship speed` },
           { label: 'Current speed (Spaceship)', value: `${mainWalkerDistancePerSecond.toFixed(1)} distance/sec`, isTotal: true },

@@ -13,7 +13,7 @@ import {
   MIN_TICK_INTERVAL_MS,
   MOMENTUM_MAX_MULTIPLIER,
   MOMENTUM_PERCENT_PER_LEVEL,
-  QUICK_STEPS_SPEED_PER_LEVEL,
+  QUICK_STEPS_PERCENT_PER_LEVEL,
   UFO_SPEED_MAX_LEVEL,
   UFO_SPEED_RATIO_BASE,
   UFO_SPEED_RATIO_MAX,
@@ -40,7 +40,7 @@ describe('computeEdgeTravelMs', () => {
     expect(heavy).toBeCloseTo(light * 2)
   })
 
-  it('each Quick Steps level adds a flat amount of base speed, shrinking the interval', () => {
+  it('each Quick Steps level compounds the base speed by another 10%, shrinking the interval', () => {
     const level1 = computeEdgeTravelMs({ quickStepsLevel: 1, momentumLevel: 0, elapsedSecondsThisRun: 0 }, TEST_EDGE_WEIGHT, true)
     const level2 = computeEdgeTravelMs({ quickStepsLevel: 2, momentumLevel: 0, elapsedSecondsThisRun: 0 }, TEST_EDGE_WEIGHT, true)
     expect(level1).toBeLessThan(BASE_INTERVAL_MS)
@@ -147,9 +147,12 @@ describe('computeDistancePerSecond', () => {
     )
   })
 
-  it('adds a flat bonus per Quick Steps level, for the Spaceship (isMainWalker true)', () => {
-    expect(computeDistancePerSecond({ quickStepsLevel: 1, momentumLevel: 0, elapsedSecondsThisRun: 0 }, true)).toBe(
-      BASE_DISTANCE_PER_SECOND + QUICK_STEPS_SPEED_PER_LEVEL,
+  it('compounds a 10% bonus per Quick Steps level, for the Spaceship (isMainWalker true)', () => {
+    expect(computeDistancePerSecond({ quickStepsLevel: 1, momentumLevel: 0, elapsedSecondsThisRun: 0 }, true)).toBeCloseTo(
+      BASE_DISTANCE_PER_SECOND * (1 + QUICK_STEPS_PERCENT_PER_LEVEL),
+    )
+    expect(computeDistancePerSecond({ quickStepsLevel: 2, momentumLevel: 0, elapsedSecondsThisRun: 0 }, true)).toBeCloseTo(
+      BASE_DISTANCE_PER_SECOND * (1 + QUICK_STEPS_PERCENT_PER_LEVEL) ** 2,
     )
   })
 
@@ -187,9 +190,9 @@ describe('computeUfoSpeedRatio', () => {
   })
 })
 
-describe('QUICK_STEPS_SPEED_PER_LEVEL', () => {
-  it('is a small positive flat bonus per level', () => {
-    expect(QUICK_STEPS_SPEED_PER_LEVEL).toBeGreaterThan(0)
+describe('QUICK_STEPS_PERCENT_PER_LEVEL', () => {
+  it('is a small positive percent bonus per level', () => {
+    expect(QUICK_STEPS_PERCENT_PER_LEVEL).toBeGreaterThan(0)
   })
 })
 

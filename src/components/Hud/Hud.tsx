@@ -1,4 +1,4 @@
-import { computeDistancePerSecond, computeMomentumMultiplier, QUICK_STEPS_SPEED_PER_LEVEL } from '../../game/speed/rules'
+import { computeDistancePerSecond, computeMomentumMultiplier, QUICK_STEPS_PERCENT_PER_LEVEL } from '../../game/speed/rules'
 import { useNow } from '../../hooks/useNow'
 import { useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
@@ -22,7 +22,7 @@ export function Hud() {
 
   const elapsedSecondsThisRun = (now - runStartedAt) / 1000
   const distancePerSecond = computeDistancePerSecond({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun })
-  const quickStepsBonus = quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL
+  const quickStepsPercent = Math.round(((1 + QUICK_STEPS_PERCENT_PER_LEVEL) ** quickStepsLevel - 1) * 100)
   const momentumPercent = Math.round((computeMomentumMultiplier(momentumLevel, elapsedSecondsThisRun) - 1) * 100)
 
   return (
@@ -51,7 +51,7 @@ export function Hud() {
         <div className={styles.boxHeading}>Speed</div>
         <div className={styles.boxValue}>{distancePerSecond.toFixed(1)} distance/sec</div>
         <div className={styles.boxBreakdown}>
-          {quickStepsLevel > 0 && <div>{`Quick Steps: +${quickStepsBonus.toFixed(1)} distance/sec`}</div>}
+          {quickStepsLevel > 0 && <div>{`Quick Steps: +${quickStepsPercent}%`}</div>}
           {momentumLevel > 0 && <div>{`Momentum: +${momentumPercent}%`}</div>}
         </div>
       </div>

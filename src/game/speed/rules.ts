@@ -4,8 +4,8 @@ export const CELEBRATION_HOLD_MS = 1500
 /** A "typical" edge (around BASE_POINT_SPACING long) takes about 4 seconds to cross at base speed — halved from the original 30 distance/sec tuning. */
 export const BASE_DISTANCE_PER_SECOND = 15
 
-/** Quick Steps is repeatable — each purchase adds a flat +6 distance/sec to the base rate, uncapped (20% of base speed per level, same proportion as before). */
-export const QUICK_STEPS_SPEED_PER_LEVEL = 6
+/** Quick Steps is repeatable — each purchase multiplies the base rate by another 10%, compounding, uncapped (same shape as Momentum/Quick Study). */
+export const QUICK_STEPS_PERCENT_PER_LEVEL = 0.1
 export const QUICK_STEPS_BASE_COST = 60
 export const QUICK_STEPS_COST_GROWTH = 1.1
 
@@ -72,7 +72,8 @@ export function computeUfoSpeedRatio(ufoSpeedLevel = 0): number {
 /** Distance/sec, before applying it to any particular edge's weight. isMainWalker adds Main Walker Speed's bonus on top; a UFO instead takes that same fully-computed Spaceship speed and scales it down by computeUfoSpeedRatio, so every other speed upgrade carries over proportionally. */
 export function computeDistancePerSecond(progression: SpeedProgression, isMainWalker = false): number {
   const mainWalkerBonus = (progression.mainWalkerSpeedLevel ?? 0) * MAIN_WALKER_SPEED_PER_LEVEL
-  const base = BASE_DISTANCE_PER_SECOND + progression.quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL + mainWalkerBonus
+  const quickStepsBase = BASE_DISTANCE_PER_SECOND * (1 + QUICK_STEPS_PERCENT_PER_LEVEL) ** progression.quickStepsLevel
+  const base = quickStepsBase + mainWalkerBonus
   const withMomentum =
     progression.momentumLevel === 0 ? base : base * computeMomentumMultiplier(progression.momentumLevel, progression.elapsedSecondsThisRun)
   return isMainWalker ? withMomentum : withMomentum * computeUfoSpeedRatio(progression.ufoSpeedLevel)
