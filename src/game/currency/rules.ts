@@ -1,8 +1,8 @@
 import type { Graph } from '../graph/types'
 import type { CurrencyState } from './types'
 
-export const DISCOVERY_REWARD_PER_NODE = 1
-export const REVISIT_REWARD = 0.1
+export const DISCOVERY_REWARD_PER_NODE = 2
+export const REVISIT_REWARD = 0.2
 export const GOAL_REWARD_PER_NODE = 10
 
 /** Discovery Bonus is repeatable — each purchase raises the discovery reward rate by another 20%, compounding, uncapped. */

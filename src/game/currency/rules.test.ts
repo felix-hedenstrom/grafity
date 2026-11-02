@@ -5,6 +5,7 @@ import {
   computeGoalBonus,
   computeNodesPerSolve,
   createCurrency,
+  DISCOVERY_REWARD_PER_NODE,
   earn,
   GOAL_REWARD_PER_NODE,
   REVISIT_REWARD,
@@ -24,7 +25,7 @@ describe('currency rules', () => {
 
   it('scales discovery reward with newly discovered node count', () => {
     expect(computeDiscoveryReward(0)).toBe(0)
-    expect(computeDiscoveryReward(3)).toBe(3)
+    expect(computeDiscoveryReward(3)).toBe(3 * DISCOVERY_REWARD_PER_NODE)
   })
 
   it('scales the goal bonus with the size of the graph', () => {
@@ -46,7 +47,7 @@ describe('currency rules', () => {
     for (let i = 0; i < 3; i++) {
       currency = earn(currency, REVISIT_REWARD)
     }
-    expect(currency.amount).toBe(0.3)
+    expect(currency.amount).toBe(0.6)
   })
 
   it('spend decreases amount but leaves totalEarned untouched', () => {

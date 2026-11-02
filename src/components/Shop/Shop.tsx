@@ -395,6 +395,13 @@ function SpeedTab() {
         ]}
       />
       <RepeatableUpgradeCard
+        info={MOMENTUM_UPGRADE_INFO}
+        level={momentumLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseMomentumLevel}
+      />
+      <RepeatableUpgradeCard
         info={QUICK_STEPS_UPGRADE_INFO}
         level={quickStepsLevel}
         currencyAmount={currency.amount}
@@ -407,13 +414,6 @@ function SpeedTab() {
         currencyAmount={currency.amount}
         highestLevel={highestGraphNodeCount}
         onBuy={purchaseDiscoverWaitLevel}
-      />
-      <RepeatableUpgradeCard
-        info={MOMENTUM_UPGRADE_INFO}
-        level={momentumLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseMomentumLevel}
       />
       <RepeatableUpgradeCard
         info={SEARCHER_UPGRADE_INFO}
