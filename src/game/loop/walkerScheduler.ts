@@ -46,6 +46,7 @@ function buildSpeedProgression(progression: ReturnType<typeof useProgressionStor
     momentumLevel: progression.momentumLevel,
     elapsedSecondsThisRun: (Date.now() - useRunStore.getState().runStartedAt) / 1000,
     mainWalkerSpeedLevel: progression.mainWalkerSpeedLevel,
+    ufoSpeedLevel: progression.ufoSpeedLevel,
   }
 }
 

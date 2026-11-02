@@ -6,6 +6,8 @@ export interface RepeatableUpgradeInfo {
   costGrowth: number
   /** The level (graph node count) the player must have reached at least once before the very first purchase is allowed, regardless of currency. Only gates level 0 -> 1; later levels are cost-gated only. */
   minLevel: number
+  /** If set, the level this upgrade can never exceed — purchases beyond it are rejected and the shop shows "Maxed" instead of a buy button. Omitted (the default for every other repeatable) means uncapped. */
+  maxLevel?: number
 }
 
 /** The price of the next level, given how many are already owned — geometric, like most incremental games, not flat or linear. */

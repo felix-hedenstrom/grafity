@@ -12,10 +12,13 @@ import type { GameLoopHandle } from './walkerScheduler'
 import { startWalkerScheduler } from './walkerScheduler'
 
 /**
- * A tiny straight-line graph (start -- A -- goal) with equal edge weights, used to deterministically
- * exercise the redirect flow: with Math.random mocked to always return 0, randomWalk's pickRandom
- * always picks each node's first adjacency entry, so ordering the arrays below fully controls which
- * way every walker moves.
+ * A tiny straight-line graph (start -- A -- goal), used to deterministically exercise the redirect
+ * flow: with Math.random mocked to always return 0, randomWalk's pickRandom always picks each
+ * node's first adjacency entry, so ordering the arrays below fully controls which way every walker
+ * moves. The A--goal edge is deliberately lighter than A--start: at UFO_SPEED_RATIO_BASE, a UFO's
+ * single A->goal hop and the Spaceship's own two full-speed hops (start->A->goal) would otherwise
+ * land at the exact same instant when both edges share a weight, leaving no window to observe the
+ * mid-flight redirect state the 'exit redirect' tests below check for.
  */
 function buildLineGraph(): Graph {
   return {
@@ -26,7 +29,7 @@ function buildLineGraph(): Graph {
     ],
     edges: [
       { id: 'A--start', source: 'start', target: 'A', weight: 60 },
-      { id: 'A--goal', source: 'A', target: 'goal', weight: 60 },
+      { id: 'A--goal', source: 'A', target: 'goal', weight: 20 },
     ],
     startNodeId: 'start',
     goalNodeId: 'goal',
@@ -182,7 +185,7 @@ describe('walkerScheduler', () => {
 
     it('redirects the main walker and makes every other walker disappear once a non-main walker finds the exit', () => {
       handle = startWalkerScheduler()
-      vi.advanceTimersByTime(4100) // just enough for walker[1] (A -> goal) to land
+      vi.advanceTimersByTime(2700) // just enough for walker[1] (a UFO, at UFO_SPEED_RATIO_BASE speed) to cross A -> goal, well before the Spaceship's own two-hop trip would land there (~5333ms)
 
       const state = useRunStore.getState()
       expect(state.walkers).toHaveLength(1)
@@ -192,7 +195,7 @@ describe('walkerScheduler', () => {
 
     it('eventually lands the main walker on the real goal via the redirect path, ending the run', () => {
       handle = startWalkerScheduler()
-      vi.advanceTimersByTime(9_000) // first hop (A) + redirect handoff + second hop (goal), with margin — short of the celebration hold resetting the run
+      vi.advanceTimersByTime(6_000) // first hop (A, 4000ms) + redirect handoff + second hop (goal, ~1333ms), with margin — short of the celebration hold resetting the run at ~6833ms
 
       expect(useRunStore.getState().walkers[0].hasReachedGoal).toBe(true)
       expect(useRunStore.getState().status).toBe('celebrating')
@@ -200,7 +203,7 @@ describe('walkerScheduler', () => {
 
     it('stops growing the searcher pool while a redirect is in flight', () => {
       handle = startWalkerScheduler()
-      vi.advanceTimersByTime(4100)
+      vi.advanceTimersByTime(2700)
       expect(useRunStore.getState().redirectPath).not.toBeNull()
 
       useProgressionStore.setState({ searcherLevel: 4 })

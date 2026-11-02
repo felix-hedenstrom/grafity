@@ -14,7 +14,9 @@ import {
   computeDiscoverWaitMs,
   computeDistancePerSecond,
   computeMomentumMultiplier,
+  computeUfoSpeedRatio,
   QUICK_STEPS_SPEED_PER_LEVEL,
+  UFO_SPEED_MAX_LEVEL,
 } from '../../game/speed/rules'
 import { getStrategy } from '../../game/strategies'
 import { computeEffectiveMemoryLevel, DEEP_MEMORY_PERCENT_PER_LEVEL } from '../../game/strategies/memory'
@@ -35,6 +37,7 @@ import {
   QUICK_STEPS_UPGRADE_INFO,
   REVISIT_BONUS_UPGRADE_INFO,
   SEARCHER_UPGRADE_INFO,
+  UFO_SPEED_UPGRADE_INFO,
   UPGRADES,
 } from '../../game/upgrades/definitions'
 import { costForLevel, type RepeatableUpgradeInfo } from '../../game/upgrades/scaling'
@@ -85,6 +88,7 @@ function usePurchasableCounts(): Partial<Record<Tab, number>> {
   const momentumLevel = useProgressionStore((s) => s.momentumLevel)
   const searcherLevel = useProgressionStore((s) => s.searcherLevel)
   const mainWalkerSpeedLevel = useProgressionStore((s) => s.mainWalkerSpeedLevel)
+  const ufoSpeedLevel = useProgressionStore((s) => s.ufoSpeedLevel)
   const clarityLevel = useProgressionStore((s) => s.clarityLevel)
   const insightMultiplierLevel = useProgressionStore((s) => s.insightMultiplierLevel)
   const discoveryBonusLevel = useProgressionStore((s) => s.discoveryBonusLevel)
@@ -116,7 +120,8 @@ function usePurchasableCounts(): Partial<Record<Tab, number>> {
       Number(
         (mainWalkerSpeedLevel > 0 || searcherLevel > 0) &&
           canAffordRepeatable(MAIN_WALKER_SPEED_UPGRADE_INFO, mainWalkerSpeedLevel, amount, highestGraphNodeCount),
-      ),
+      ) +
+      Number(ufoSpeedLevel < UFO_SPEED_MAX_LEVEL && canAffordRepeatable(UFO_SPEED_UPGRADE_INFO, ufoSpeedLevel, amount, highestGraphNodeCount)),
     Display:
       Number(canAffordOneTime(CLARITY_UPGRADE, clarityLevel > 0, amount, highestGraphNodeCount)) +
       Number(canAffordOneTime(MINIMAP_UPGRADE, purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id), amount, highestGraphNodeCount)),
@@ -396,20 +401,26 @@ function SpeedTab() {
   const momentumLevel = useProgressionStore((s) => s.momentumLevel)
   const searcherLevel = useProgressionStore((s) => s.searcherLevel)
   const mainWalkerSpeedLevel = useProgressionStore((s) => s.mainWalkerSpeedLevel)
+  const ufoSpeedLevel = useProgressionStore((s) => s.ufoSpeedLevel)
   const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
   const purchaseQuickStepsLevel = useProgressionStore((s) => s.purchaseQuickStepsLevel)
   const purchaseDiscoverWaitLevel = useProgressionStore((s) => s.purchaseDiscoverWaitLevel)
   const purchaseMomentumLevel = useProgressionStore((s) => s.purchaseMomentumLevel)
   const purchaseSearcherLevel = useProgressionStore((s) => s.purchaseSearcherLevel)
   const purchaseMainWalkerSpeedLevel = useProgressionStore((s) => s.purchaseMainWalkerSpeedLevel)
+  const purchaseUfoSpeedLevel = useProgressionStore((s) => s.purchaseUfoSpeedLevel)
   const runStartedAt = useRunStore((s) => s.runStartedAt)
 
   const now = useNow()
   const elapsedSecondsThisRun = (now - runStartedAt) / 1000
   const quickStepsBonus = quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL
   const momentumMultiplier = computeMomentumMultiplier(momentumLevel, elapsedSecondsThisRun)
-  const distancePerSecond = computeDistancePerSecond({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun })
+  const ufoSpeedRatio = computeUfoSpeedRatio(ufoSpeedLevel)
   const mainWalkerDistancePerSecond = computeDistancePerSecond({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun, mainWalkerSpeedLevel }, true)
+  const ufoDistancePerSecond = computeDistancePerSecond(
+    { quickStepsLevel, momentumLevel, elapsedSecondsThisRun, mainWalkerSpeedLevel, ufoSpeedLevel },
+    false,
+  )
   const discoverWaitMs = computeDiscoverWaitMs(discoverWaitLevel)
 
   return (
@@ -420,8 +431,9 @@ function SpeedTab() {
           { label: 'Base speed', value: `${BASE_DISTANCE_PER_SECOND.toFixed(1)} distance/sec` },
           { label: 'Quick Steps', value: `+${quickStepsBonus.toFixed(1)} distance/sec` },
           { label: 'Momentum (this run)', value: `×${momentumMultiplier.toFixed(2)}` },
-          { label: 'Current speed (other searchers)', value: `${distancePerSecond.toFixed(1)} distance/sec`, isTotal: true },
-          { label: 'Current speed (main walker)', value: `${mainWalkerDistancePerSecond.toFixed(1)} distance/sec`, isTotal: true },
+          { label: 'UFO speed ratio', value: `${Math.round(ufoSpeedRatio * 100)}% of Spaceship speed` },
+          { label: 'Current speed (Spaceship)', value: `${mainWalkerDistancePerSecond.toFixed(1)} distance/sec`, isTotal: true },
+          { label: 'Current speed (UFOs)', value: `${ufoDistancePerSecond.toFixed(1)} distance/sec`, isTotal: true },
           { label: 'Discover wait', value: `${Math.round(discoverWaitMs)}ms`, isTotal: true },
         ]}
       />
@@ -460,6 +472,13 @@ function SpeedTab() {
         highestLevel={highestGraphNodeCount}
         onBuy={purchaseMainWalkerSpeedLevel}
         extraLock={{ locked: searcherLevel === 0, message: 'Requires Extra Searcher' }}
+      />
+      <RepeatableUpgradeCard
+        info={UFO_SPEED_UPGRADE_INFO}
+        level={ufoSpeedLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseUfoSpeedLevel}
       />
     </div>
   )
@@ -606,9 +625,10 @@ interface RepeatableUpgradeCardProps {
   extraLock?: { locked: boolean; message: string }
 }
 
-/** A passive stat with no owned/unowned identity, just a level — cost rises geometrically with each purchase, uncapped. minLevel (and extraLock, if given) only gate the very first purchase; once owned, further levels are cost-gated only. */
+/** A passive stat with no owned/unowned identity, just a level — cost rises geometrically with each purchase. Uncapped unless info.maxLevel is set (e.g. UFO Speed), in which case the buy button becomes a disabled "Maxed" state once reached. minLevel (and extraLock, if given) only gate the very first purchase; once owned, further levels are cost-gated only. */
 function RepeatableUpgradeCard({ info, level, currencyAmount, highestLevel, onBuy, extraLock }: RepeatableUpgradeCardProps) {
-  const cost = costForLevel(info, level)
+  const maxed = info.maxLevel !== undefined && level >= info.maxLevel
+  const cost = maxed ? 0 : costForLevel(info, level)
   const levelLocked = level === 0 && highestLevel < info.minLevel
   const extraLocked = level === 0 && (extraLock?.locked ?? false)
   if (level === 0 && info.minLevel > highestLevel * 1.5) return null
@@ -619,7 +639,11 @@ function RepeatableUpgradeCard({ info, level, currencyAmount, highestLevel, onBu
         {info.name} (Lv {level})
       </div>
       <div className={styles.description}>{info.description}</div>
-      {levelLocked || extraLocked ? (
+      {maxed ? (
+        <button type="button" className={styles.buyButton} disabled>
+          Maxed
+        </button>
+      ) : levelLocked || extraLocked ? (
         <button type="button" className={styles.buyButton} disabled>
           {levelLocked ? `Unlocks at level ${info.minLevel}` : extraLock?.message}
         </button>

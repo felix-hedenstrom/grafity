@@ -9,10 +9,18 @@ export const QUICK_STEPS_SPEED_PER_LEVEL = 6
 export const QUICK_STEPS_BASE_COST = 60
 export const QUICK_STEPS_COST_GROWTH = 1.1
 
-/** Main Walker Speed is repeatable and only ever applies to the main walker (walkers[0]) — every other searcher ignores it entirely. Same per-level bump as Quick Steps, but gated behind it conceptually since it only matters once there's more than one walker to outrun. */
+/** Main Walker Speed is repeatable and only ever applies to the Spaceship (walkers[0]) — every UFO ignores it entirely. Same per-level bump as Quick Steps, but gated behind it conceptually since it only matters once there's more than one walker to outrun. */
 export const MAIN_WALKER_SPEED_PER_LEVEL = 6
 export const MAIN_WALKER_SPEED_BASE_COST = 800
 export const MAIN_WALKER_SPEED_COST_GROWTH = 1.3
+
+/** UFO Speed is repeatable but capped — every UFO (every walker besides the Spaceship) travels at this fraction of the Spaceship's current speed, buyable in 1-point steps up to UFO_SPEED_RATIO_MAX. */
+export const UFO_SPEED_RATIO_BASE = 0.5
+export const UFO_SPEED_RATIO_PERCENT_PER_LEVEL = 0.01
+export const UFO_SPEED_RATIO_MAX = 0.75
+export const UFO_SPEED_MAX_LEVEL = Math.round((UFO_SPEED_RATIO_MAX - UFO_SPEED_RATIO_BASE) / UFO_SPEED_RATIO_PERCENT_PER_LEVEL)
+export const UFO_SPEED_BASE_COST = 500
+export const UFO_SPEED_COST_GROWTH = 1.25
 
 /** Momentum is repeatable rather than a single owned/not-owned upgrade — each purchase adds one level, uncapped. */
 export const MOMENTUM_PERCENT_PER_LEVEL = 0.005
@@ -41,6 +49,8 @@ export interface SpeedProgression {
   elapsedSecondsThisRun: number
   /** How many Main Walker Speed levels are owned — applied only when computeDistancePerSecond/computeEdgeTravelMs are called with isMainWalker true. Optional (defaults to 0) so existing call sites that never heard of this upgrade keep working untouched. */
   mainWalkerSpeedLevel?: number
+  /** How many UFO Speed levels are owned — applied only when isMainWalker is false, scaling the Spaceship's fully-computed speed down to the UFO's ratio. Optional (defaults to 0, i.e. UFO_SPEED_RATIO_BASE). */
+  ufoSpeedLevel?: number
 }
 
 /** The compounding per-second rate Momentum currently grants, before applying it over elapsed time. */
@@ -54,12 +64,18 @@ export function computeMomentumMultiplier(momentumLevel: number, elapsedSecondsT
   return Math.min(MOMENTUM_MAX_MULTIPLIER, raw)
 }
 
-/** Distance/sec, before applying it to any particular edge's weight. isMainWalker adds Main Walker Speed's bonus on top — every other walker ignores that upgrade entirely. */
+/** How fast a UFO travels right now, as a fraction of the Spaceship's current speed — starts at UFO_SPEED_RATIO_BASE, rises by UFO_SPEED_RATIO_PERCENT_PER_LEVEL per purchase, capped at UFO_SPEED_RATIO_MAX regardless of level. */
+export function computeUfoSpeedRatio(ufoSpeedLevel = 0): number {
+  return Math.min(UFO_SPEED_RATIO_MAX, UFO_SPEED_RATIO_BASE + ufoSpeedLevel * UFO_SPEED_RATIO_PERCENT_PER_LEVEL)
+}
+
+/** Distance/sec, before applying it to any particular edge's weight. isMainWalker adds Main Walker Speed's bonus on top; a UFO instead takes that same fully-computed Spaceship speed and scales it down by computeUfoSpeedRatio, so every other speed upgrade carries over proportionally. */
 export function computeDistancePerSecond(progression: SpeedProgression, isMainWalker = false): number {
-  const mainWalkerBonus = isMainWalker ? (progression.mainWalkerSpeedLevel ?? 0) * MAIN_WALKER_SPEED_PER_LEVEL : 0
+  const mainWalkerBonus = (progression.mainWalkerSpeedLevel ?? 0) * MAIN_WALKER_SPEED_PER_LEVEL
   const base = BASE_DISTANCE_PER_SECOND + progression.quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL + mainWalkerBonus
-  if (progression.momentumLevel === 0) return base
-  return base * computeMomentumMultiplier(progression.momentumLevel, progression.elapsedSecondsThisRun)
+  const withMomentum =
+    progression.momentumLevel === 0 ? base : base * computeMomentumMultiplier(progression.momentumLevel, progression.elapsedSecondsThisRun)
+  return isMainWalker ? withMomentum : withMomentum * computeUfoSpeedRatio(progression.ufoSpeedLevel)
 }
 
 /** How long (ms) it takes one walker to cross one edge of the given weight (distance) at the current speed. isMainWalker only matters for walkers[0] — see computeDistancePerSecond. */

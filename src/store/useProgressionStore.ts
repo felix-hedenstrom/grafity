@@ -20,6 +20,7 @@ import {
   QUICK_STEPS_UPGRADE_INFO,
   REVISIT_BONUS_UPGRADE_INFO,
   SEARCHER_UPGRADE_INFO,
+  UFO_SPEED_UPGRADE_INFO,
   UPGRADES,
 } from '../game/upgrades/definitions'
 import { costForLevel } from '../game/upgrades/scaling'
@@ -43,6 +44,7 @@ interface ProgressionState {
   discoverWaitLevel: number
   searcherLevel: number
   mainWalkerSpeedLevel: number
+  ufoSpeedLevel: number
   clarityLevel: number
   insightMultiplierLevel: number
   discoveryBonusLevel: number
@@ -61,6 +63,7 @@ interface ProgressionState {
   purchaseDiscoverWaitLevel: () => boolean
   purchaseSearcherLevel: () => boolean
   purchaseMainWalkerSpeedLevel: () => boolean
+  purchaseUfoSpeedLevel: () => boolean
   purchaseInsightMultiplierLevel: () => boolean
   purchaseDiscoveryBonusLevel: () => boolean
   purchaseRevisitBonusLevel: () => boolean
@@ -97,6 +100,7 @@ export const useProgressionStore = create<ProgressionState>()(
       discoverWaitLevel: 0,
       searcherLevel: 0,
       mainWalkerSpeedLevel: 0,
+      ufoSpeedLevel: 0,
       clarityLevel: 0,
       insightMultiplierLevel: 0,
       discoveryBonusLevel: 0,
@@ -237,6 +241,17 @@ export const useProgressionStore = create<ProgressionState>()(
         return true
       },
 
+      purchaseUfoSpeedLevel: () => {
+        const state = get()
+        if (state.ufoSpeedLevel >= UFO_SPEED_UPGRADE_INFO.maxLevel!) return false
+        if (state.ufoSpeedLevel === 0 && state.highestGraphNodeCount < UFO_SPEED_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(UFO_SPEED_UPGRADE_INFO, state.ufoSpeedLevel)
+        if (state.currency.amount < cost) return false
+
+        set({ currency: spend(state.currency, cost), ufoSpeedLevel: state.ufoSpeedLevel + 1 })
+        return true
+      },
+
       purchaseInsightMultiplierLevel: () => {
         const state = get()
         if (state.insightMultiplierLevel === 0 && state.highestGraphNodeCount < INSIGHT_MULTIPLIER_UPGRADE_INFO.minLevel) return false
@@ -322,6 +337,7 @@ export const useProgressionStore = create<ProgressionState>()(
           discoverWaitLevel: 0,
           searcherLevel: 0,
           mainWalkerSpeedLevel: 0,
+          ufoSpeedLevel: 0,
           clarityLevel: 0,
           insightMultiplierLevel: 0,
           discoveryBonusLevel: 0,

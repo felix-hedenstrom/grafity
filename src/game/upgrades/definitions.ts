@@ -32,6 +32,12 @@ import {
   QUICK_STEPS_BASE_COST,
   QUICK_STEPS_COST_GROWTH,
   QUICK_STEPS_SPEED_PER_LEVEL,
+  UFO_SPEED_BASE_COST,
+  UFO_SPEED_COST_GROWTH,
+  UFO_SPEED_MAX_LEVEL,
+  UFO_SPEED_RATIO_BASE,
+  UFO_SPEED_RATIO_MAX,
+  UFO_SPEED_RATIO_PERCENT_PER_LEVEL,
 } from '../speed/rules'
 import { aStar } from '../strategies/aStar'
 import { bidirectionalSearch } from '../strategies/bidirectionalSearch'
@@ -250,13 +256,27 @@ export const SEARCHER_UPGRADE_INFO: RepeatableUpgradeInfo = {
   minLevel: 35,
 }
 
-/** Main Walker Speed is repeatable and only ever speeds up the main walker (walkers[0]) — every other searcher, and Bidirectional's reverse half, is unaffected. Only matters once there's more than one walker in play, so it's gated well behind Extra Searcher. */
+/** Main Walker Speed is repeatable and only ever speeds up the Spaceship (walkers[0]) — every UFO is unaffected. Only matters once there's more than one walker in play, so it's gated well behind Extra Searcher. */
 export const MAIN_WALKER_SPEED_UPGRADE_INFO: RepeatableUpgradeInfo = {
   name: 'Main Walker Speed',
-  description: `+${MAIN_WALKER_SPEED_PER_LEVEL} travel speed per purchase — main walker only.`,
+  description: `+${MAIN_WALKER_SPEED_PER_LEVEL} travel speed per purchase — Spaceship only.`,
   baseCost: MAIN_WALKER_SPEED_BASE_COST,
   costGrowth: MAIN_WALKER_SPEED_COST_GROWTH,
   minLevel: 35,
+}
+
+const ufoSpeedRatioBasePercent = Math.round(UFO_SPEED_RATIO_BASE * 100)
+const ufoSpeedRatioMaxPercent = Math.round(UFO_SPEED_RATIO_MAX * 100)
+const ufoSpeedRatioPercentPerLevel = Math.round(UFO_SPEED_RATIO_PERCENT_PER_LEVEL * 100)
+
+/** UFO Speed is repeatable but capped — every UFO (every walker besides the Spaceship) travels at a fraction of the Spaceship's current speed, starting at 50% and buyable up to 75% in 1-point steps. */
+export const UFO_SPEED_UPGRADE_INFO: RepeatableUpgradeInfo = {
+  name: 'UFO Speed',
+  description: `+${ufoSpeedRatioPercentPerLevel}% of Spaceship speed per purchase for every UFO — starts at ${ufoSpeedRatioBasePercent}%, caps at ${ufoSpeedRatioMaxPercent}%.`,
+  baseCost: UFO_SPEED_BASE_COST,
+  costGrowth: UFO_SPEED_COST_GROWTH,
+  minLevel: 35,
+  maxLevel: UFO_SPEED_MAX_LEVEL,
 }
 
 /** Clarity is a one-time, on/off unlock — buying it jumps straight to max spacing, keeping the graph legible instead of a tangled hairball as it grows. */
