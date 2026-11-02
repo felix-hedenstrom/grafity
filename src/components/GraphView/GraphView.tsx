@@ -36,6 +36,8 @@ export function GraphView() {
   const graph = useRunStore((s) => s.graph)
   const walkers = useRunStore((s) => s.walkers)
   const walker2 = useRunStore((s) => s.walker2)
+  const walkerTransits = useRunStore((s) => s.walkerTransits)
+  const walker2Transit = useRunStore((s) => s.walker2Transit)
   const discovery = useRunStore((s) => s.discovery)
   const status = useRunStore((s) => s.status)
   const strategyMemories = useRunStore((s) => s.strategyMemories)
@@ -192,13 +194,18 @@ export function GraphView() {
           })}
         </g>
         {walkers.map((w, i) => {
-          const position = nodesById.get(w.currentNodeId)
-          return position ? <WalkerToken key={`w-${i}`} x={position.x ?? 0} y={position.y ?? 0} /> : null
+          const transit = walkerTransits[i]
+          const position = nodesById.get(transit?.nextNodeId ?? w.currentNodeId)
+          return position ? (
+            <WalkerToken key={`w-${i}`} x={position.x ?? 0} y={position.y ?? 0} travelMs={transit?.travelMs ?? 0} />
+          ) : null
         })}
         {walker2 &&
           (() => {
-            const position = nodesById.get(walker2.currentNodeId)
-            return position ? <WalkerToken x={position.x ?? 0} y={position.y ?? 0} variant="reverse" /> : null
+            const position = nodesById.get(walker2Transit?.nextNodeId ?? walker2.currentNodeId)
+            return position ? (
+              <WalkerToken x={position.x ?? 0} y={position.y ?? 0} travelMs={walker2Transit?.travelMs ?? 0} variant="reverse" />
+            ) : null
           })()}
         {isCelebrating &&
           allWalkers.map((w, i) => {

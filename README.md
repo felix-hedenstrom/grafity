@@ -1,5 +1,21 @@
 # React + TypeScript + Vite
 
+## Development
+
+This repo doesn't assume `node`/`npm` are on your PATH — use the Nix flake to get a shell with the right Node version:
+
+```sh
+nix develop --command npm install
+nix develop --command npm run dev
+```
+
+Or enter the shell interactively and run commands normally:
+
+```sh
+nix develop
+npm run dev
+```
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:

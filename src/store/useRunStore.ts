@@ -11,12 +11,22 @@ import { useProgressionStore } from './useProgressionStore'
 
 type RunStatus = 'exploring' | 'celebrating'
 
+/** Where a walker is headed and how long the crossing takes — lets the UI animate the glide across the edge's real travel time instead of snapping on arrival. Set by the scheduler at departure, cleared on arrival. */
+export interface WalkerTransit {
+  nextNodeId: NodeId
+  travelMs: number
+}
+
 interface RunState {
   graph: Graph
   /** Every active searcher running the current strategy. Always length 1 + searcherLevel, except while Bidirectional Search is active, where it holds just the start-side walker. */
   walkers: WalkerState[]
   /** Only set while Bidirectional Search is active — the goal-side walker searching toward walkers[0] from the other end. Unaffected by Extra Searcher. */
   walker2: WalkerState | null
+  /** In-flight transit info for each entry in walkers, index-aligned — null while a walker is sitting still (discovering or waiting). */
+  walkerTransits: (WalkerTransit | null)[]
+  /** walker2's in-flight transit — only meaningful while Bidirectional Search is active. */
+  walker2Transit: WalkerTransit | null
   discovery: DiscoveryState
   /** Per-walker scratch state (e.g. DFS's backtracking stack), index-aligned with walkers — never pooled. */
   strategyMemories: unknown[]
@@ -33,7 +43,17 @@ interface RunState {
 
 function freshRun(): Pick<
   RunState,
-  'graph' | 'walkers' | 'walker2' | 'discovery' | 'strategyMemories' | 'sharedRecentPath' | 'loadedStrategyId' | 'status' | 'runStartedAt'
+  | 'graph'
+  | 'walkers'
+  | 'walker2'
+  | 'walkerTransits'
+  | 'walker2Transit'
+  | 'discovery'
+  | 'strategyMemories'
+  | 'sharedRecentPath'
+  | 'loadedStrategyId'
+  | 'status'
+  | 'runStartedAt'
 > {
   const progression = useProgressionStore.getState()
   const graph = generatePlanarGraph(progression.graphNodeCount, undefined, progression.clarityLevel > 0)
@@ -48,6 +68,8 @@ function freshRun(): Pick<
     graph,
     walkers: Array.from({ length: searcherCount }, () => createWalker(graph.startNodeId)),
     walker2: isBidirectional ? createWalker(graph.goalNodeId) : null,
+    walkerTransits: Array.from({ length: searcherCount }, () => null),
+    walker2Transit: null,
     discovery,
     strategyMemories: [],
     sharedRecentPath: [],

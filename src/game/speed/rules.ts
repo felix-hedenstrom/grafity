@@ -1,8 +1,8 @@
 export const MIN_TICK_INTERVAL_MS = 150
 /** How long the goal-reached celebration holds walkers in place before the graph resets — fixed, not derived from any edge/speed math, roughly matching GraphView's burst/banner CSS animations (1.8s) so they finish playing first. */
 export const CELEBRATION_HOLD_MS = 1500
-/** A "typical" edge (around BASE_POINT_SPACING long) takes about 2 seconds to cross at base speed — same pace as the old fixed tick interval, just now scaled by each edge's actual weight/distance instead of being constant. */
-export const BASE_DISTANCE_PER_SECOND = 30
+/** A "typical" edge (around BASE_POINT_SPACING long) takes about 4 seconds to cross at base speed — halved from the original 30 distance/sec tuning. */
+export const BASE_DISTANCE_PER_SECOND = 15
 
 /** Quick Steps is repeatable — each purchase adds a flat +6 distance/sec to the base rate, uncapped (20% of base speed per level, same proportion as before). */
 export const QUICK_STEPS_SPEED_PER_LEVEL = 6

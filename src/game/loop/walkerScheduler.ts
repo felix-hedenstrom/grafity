@@ -94,6 +94,9 @@ function departSearcher(i: number): void {
 
   const edgeWeight = getEdgeWeight(runState.graph, walker.currentNodeId, nextNodeId)
   const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight)
+  useRunStore.setState((s) => ({
+    walkerTransits: s.walkerTransits.map((t, idx) => (idx === i ? { nextNodeId, travelMs } : t)),
+  }))
   searcherTimers[i] = setTimeout(() => arriveSearcher(i, nextNodeId), travelMs)
 }
 
@@ -114,6 +117,7 @@ function arriveSearcher(i: number, nextNodeId: NodeId): void {
 
   useRunStore.setState((s) => ({
     walkers: s.walkers.map((w, idx) => (idx === i ? result.walker : w)),
+    walkerTransits: s.walkerTransits.map((t, idx) => (idx === i ? null : t)),
     discovery: result.discovery,
     status: result.goalReached ? 'celebrating' : s.status,
   }))
@@ -140,6 +144,7 @@ function growSearchers(desiredCount: number): void {
 
   useRunStore.setState((s) => ({
     walkers: [...s.walkers, ...additional],
+    walkerTransits: [...s.walkerTransits, ...additional.map(() => null)],
     strategyMemories: [...s.strategyMemories, ...additional.map(() => strategy.createMemory?.())],
   }))
 
@@ -197,6 +202,11 @@ function departBidirectional(slot: BidirectionalSlot): void {
   const progression = useProgressionStore.getState()
   const edgeWeight = getEdgeWeight(runState.graph, walker.currentNodeId, nextNodeId)
   const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight)
+  useRunStore.setState((s) =>
+    slot === 'forward'
+      ? { walkerTransits: s.walkerTransits.map((t, idx) => (idx === 0 ? { nextNodeId, travelMs } : t)) }
+      : { walker2Transit: { nextNodeId, travelMs } },
+  )
   setBidirectionalTimer(slot, setTimeout(() => arriveBidirectional(slot, nextNodeId), travelMs))
 }
 
@@ -217,6 +227,8 @@ function arriveBidirectional(slot: BidirectionalSlot, nextNodeId: NodeId): void 
   useRunStore.setState((s) => ({
     walkers: slot === 'forward' ? [result.walker] : s.walkers,
     walker2: slot === 'reverse' ? result.walker : s.walker2,
+    walkerTransits: slot === 'forward' ? s.walkerTransits.map((t, idx) => (idx === 0 ? null : t)) : s.walkerTransits,
+    walker2Transit: slot === 'reverse' ? null : s.walker2Transit,
     discovery: result.discovery,
   }))
 
@@ -256,6 +268,8 @@ function switchStrategy(strategyId: string): void {
     useRunStore.setState({
       walkers: [createWalker(forwardPos)],
       walker2: createWalker(walker2Pos),
+      walkerTransits: [null],
+      walker2Transit: null,
       strategyMemories: [],
       sharedRecentPath: [],
       loadedStrategyId: strategyId,
@@ -282,6 +296,8 @@ function switchStrategy(strategyId: string): void {
   useRunStore.setState({
     walkers,
     walker2: null,
+    walkerTransits: walkers.map(() => null),
+    walker2Transit: null,
     strategyMemories: walkers.map(() => strategy.createMemory?.()),
     sharedRecentPath: [],
     loadedStrategyId: strategyId,
