@@ -17,6 +17,32 @@
   pointer-events: none;
 }
 
+/* "Resume autoscroll" overlay button — only shown once the player has scrolled to zoom
+   manually. Top-right so it never collides with the Minimap's bottom-right placement. Visual
+   style matches Hud's .iconButton (circular, bordered, same hover treatment). */
+.resumeAutoButton {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font: inherit;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  color: var(--text-h);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resumeAutoButton:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
 .dustStar {
   fill: #5a648f;
   animation-name: dustTwinkle;

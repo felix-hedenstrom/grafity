@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { MIN_VIEW_SIZE, computeDynamicViewSize, computeGraphBounds, computeViewBounds, minEdgeLength } from '../../game/graph/layout'
 import { edgeId } from '../../game/graph/types'
@@ -16,6 +16,7 @@ import styles from './GraphView.module.css'
 import { useElementSize } from './useElementSize'
 import { useInterpolatedPositions } from './useInterpolatedPositions'
 import type { WalkerPositionInput } from './useInterpolatedPositions'
+import { useManualZoom } from './useManualZoom'
 import { useSmoothedBounds } from './useSmoothedBounds'
 
 /** Which CSS class visualizes each kind of highlight group — shared across every strategy, since Node Memory now applies to all of them. */
@@ -135,7 +136,13 @@ export function GraphView() {
   const otherWalkerPositions = interpolatedPositions.slice(1)
   // Not memoized: focus/otherWalkerPositions now change continuously (every interpolation
   // frame), so memoizing against them would never hit anyway.
-  const dynamicViewSize = computeDynamicViewSize(focus, otherWalkerPositions)
+  const autoViewSize = computeDynamicViewSize(focus, otherWalkerPositions)
+  // Lets the player scroll to zoom closer to/farther from the main walker, overriding the
+  // automatic window size above until they opt back in via the "resume autoscroll" button — the
+  // walker-tracking/centering logic below is untouched either way, so panning keeps working
+  // identically at whatever zoom level is currently in effect.
+  const { manualSize, zoomBy, resumeAuto } = useManualZoom(graph)
+  const dynamicViewSize = manualSize ?? autoViewSize
   // Measured live off the actual rendered <svg> so the viewBox can be widened/heightened to match
   // it — the container's CSS (width: 100%, height: 70vh capped at 600px) makes its real pixel
   // aspect ratio unknowable at render time without measuring, and a mismatched viewBox aspect
@@ -143,10 +150,53 @@ export function GraphView() {
   const [svgRef, svgSize] = useElementSize<SVGSVGElement>()
   const containerAspectRatio = svgSize.width > 0 && svgSize.height > 0 ? svgSize.width / svgSize.height : undefined
   const targetBounds = computeViewBounds(graph, focus.x, focus.y, dynamicViewSize, containerAspectRatio)
+  // Read inside the wheel listener instead of a dependency — dynamicViewSize changes essentially
+  // every tick, and re-attaching a native listener that often is both wasteful and risks missing
+  // an event mid-swap; the ref always has the latest value without that churn.
+  const dynamicViewSizeRef = useRef(dynamicViewSize)
+  useEffect(() => {
+    dynamicViewSizeRef.current = dynamicViewSize
+  }, [dynamicViewSize])
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = wrapperRef.current
+    if (!el) return
+    // A precision trackpad can fire many wheel events within a single animation frame — applying
+    // each one as its own React state update (and SVG viewBox change, which forces a layout) is
+    // more render/layout work per frame than the browser can keep up with, which is what reads as
+    // jagged. Accumulating deltas and flushing once per rAF caps this at one update per frame.
+    let pendingDeltaY = 0
+    let rafId: number | null = null
+    function flush(): void {
+      rafId = null
+      if (pendingDeltaY === 0) return
+      zoomBy(pendingDeltaY, dynamicViewSizeRef.current)
+      pendingDeltaY = 0
+    }
+    // React's synthetic onWheel is passive by default, so preventDefault() inside it can't stop
+    // the page itself from scrolling — only a real, non-passive native listener can.
+    function handleWheel(e: WheelEvent): void {
+      e.preventDefault()
+      pendingDeltaY += e.deltaY
+      if (rafId === null) rafId = requestAnimationFrame(flush)
+    }
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', handleWheel)
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
+  }, [zoomBy])
   // Smoothly glides toward targetBounds instead of snapping — targetBounds recenters on the main
   // walker every tick once windowed, and jumping the viewBox there instantly would read as a
-  // jarring teleport rather than the walker simply moving.
-  const bounds = useSmoothedBounds(targetBounds, graph)
+  // jarring teleport rather than the walker simply moving. Still called unconditionally during
+  // manual zoom (hooks can't be skipped), so its internal "displayed" state keeps tracking
+  // targetBounds in the background and is already caught up by the time resumeAuto hands control
+  // back to it. But its output isn't used while manual: a wheel event can fire dozens of times a
+  // second, and restarting a 350ms ease-out tween that often mid-flight is what read as jagged —
+  // scrolling is already a continuous, user-driven input, so during manual zoom the raw
+  // (unsmoothed) target is applied directly instead of fighting it with another animation.
+  const smoothedBounds = useSmoothedBounds(targetBounds, graph)
+  const bounds = manualSize !== null ? targetBounds : smoothedBounds
   // Ships are fixed-size SVG coordinates, so as the viewBox window grows on big, spread-out
   // graphs (high levels) they'd otherwise shrink along with everything else until barely
   // visible — scale them back up relative to the smallest window size to stay legible.
@@ -263,7 +313,7 @@ export function GraphView() {
   const isRedirecting = redirectPath !== null
 
   return (
-    <div className={styles.wrapper}>
+    <div className={styles.wrapper} ref={wrapperRef}>
       <svg
         ref={svgRef}
         className={styles.graph}
@@ -459,6 +509,11 @@ export function GraphView() {
             )
           })}
       </svg>
+      {manualSize !== null && (
+        <button type="button" className={styles.resumeAutoButton} onClick={resumeAuto} aria-label="Resume automatic camera">
+          ⊙
+        </button>
+      )}
       {isCelebrating && <div className={styles.banner}>Exit found!</div>}
       {!isCelebrating && isRedirecting && <div className={styles.banner}>Exit found! Main walker heading there…</div>}
       {isWindowed && minimapOwned && minimapEnabled && (

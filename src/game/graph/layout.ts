@@ -41,6 +41,10 @@ export function computeGraphBounds(graph: Graph): GraphBounds {
 export const MAX_VIEW_SIZE = 1600
 /** Smallest the camera window ever shrinks to, even with no other walkers to fit in frame — keeps nodes a comfortable, legible size. Only used for the walker-proximity zoom (computeDynamicViewSize) and the walker scale it feeds into — NOT for padding a small whole-graph view, which uses MIN_GRAPH_VIEW_SIZE instead, since graph sizes now range far below this (level-7 graphs are far smaller than a few walkers' proximity window ever needs to be). */
 export const MIN_VIEW_SIZE = 500
+/** Smallest a player-controlled manual zoom is allowed to shrink the camera window to — lower
+ * than MIN_VIEW_SIZE since manual zoom is explicitly for getting a closer look than the
+ * automatic walker-tracking camera ever bothers to, not for keeping a comfortable fallback size. */
+export const MANUAL_MIN_VIEW_SIZE = 150
 /** Smallest the whole-graph view ever pads out to when the graph itself is smaller than this — much lower than MIN_VIEW_SIZE so an early, naturally tiny graph isn't zoomed out several times past its real size. */
 export const MIN_GRAPH_VIEW_SIZE = 100
 /** How many of the main walker's nearest companions the camera tries to keep in frame alongside it. */
