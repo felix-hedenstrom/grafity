@@ -11,6 +11,7 @@ export function Hud() {
   const momentumLevel = useProgressionStore((s) => s.momentumLevel)
   const stepsTaken = useRunStore((s) => s.walkers.reduce((sum, w) => sum + w.stepsTaken, 0))
   const runStartedAt = useRunStore((s) => s.runStartedAt)
+  const visitedCount = useRunStore((s) => s.discovery.visitedNodeIds.size)
   const discoveredCount = useRunStore((s) => s.discovery.discoveredNodeIds.size)
   const totalNodes = useRunStore((s) => s.graph.nodes.length)
   const openIntro = useUiStore((s) => s.openIntro)
@@ -30,11 +31,15 @@ export function Hud() {
         <span className={styles.label}>Steps</span>
         <span className={styles.value}>{stepsTaken}</span>
       </div>
-      <div className={styles.stat}>
-        <span className={styles.label}>Discovered</span>
-        <span className={styles.value}>
-          {discoveredCount} / {totalNodes}
-        </span>
+      <div className={styles.box}>
+        <div className={styles.counts}>
+          <span className={styles.label}>Visited</span>
+          <span className={styles.value}>{visitedCount}</span>
+          <span className={styles.label}>Discovered</span>
+          <span className={styles.value}>{discoveredCount}</span>
+          <span className={styles.label}>Total</span>
+          <span className={styles.value}>{totalNodes}</span>
+        </div>
       </div>
 
       <div className={styles.box}>

@@ -22,6 +22,15 @@ npm run dev
 If `npm`/`npx`/`node` aren't found, that's the signal you forgot `nix develop` — don't
 conclude the toolchain is unavailable or skip verification.
 
+### Stopping a dev server you started
+
+Never stop a dev server with a broad matcher like `pkill -f vite` or `pkill -f node` —
+the user often already has their own `npm run dev` running (Vite will print "Port 5173
+is in use, trying another one..." if so), and a broad pkill kills that one too. Only
+kill the specific PID you started (e.g. capture it from `run_in_background` / `$!`, or
+`kill` the exact PID), and only tear down a server you personally launched for
+verification — never touch the user's own processes.
+
 ## Walker naming convention
 
 - **Spaceship** — the main walker (`walkers[0]`, rendered with `variant="main"` in `WalkerToken`). The one the camera follows; its arrival at the goal ends the run.

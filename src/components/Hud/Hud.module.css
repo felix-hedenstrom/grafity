@@ -29,6 +29,23 @@
   font-family: var(--mono);
 }
 
+.counts {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 10px;
+  row-gap: 2px;
+  justify-content: center;
+}
+
+.counts .label {
+  text-align: right;
+}
+
+.counts .value {
+  text-align: left;
+  font-size: 14px;
+}
+
 .box {
   border: 1px solid var(--border);
   border-radius: 8px;
