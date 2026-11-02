@@ -188,9 +188,10 @@ export function GraphView() {
       x: fullBounds.minX + rng() * fullBounds.width,
       y: fullBounds.minY + rng() * fullBounds.height,
       // Big enough to survive being zoomed out to MAX_VIEW_SIZE without shrinking to a sub-pixel,
-      // invisible dot.
-      r: 1.6 + rng() * 2.4,
-      opacity: 0.3 + rng() * 0.55,
+      // invisible dot, but deliberately smaller/dimmer than any gameplay star so the two never
+      // compete for attention.
+      r: 0.8 + rng() * 1.2,
+      opacity: 0.12 + rng() * 0.28,
       delay: (rng() * 4).toFixed(1),
       duration: (2.4 + rng() * 2.6).toFixed(1),
     }))
@@ -244,6 +245,13 @@ export function GraphView() {
           {/* Four-point sparkle: alternating long/short radius octagon, not a plain "+" cross —
               reserved for start/goal so it reads as a glint, not clutter on every star. */}
           <polygon id="star-sparkle" points="10,0 2.1,2.1 0,10 -2.1,2.1 -10,0 -2.1,-2.1 0,-10 2.1,-2.1" />
+          {/* Classic 5-point star, outer radius 10 to match the sparkle's scale convention — the
+              crisp core glyph for every ordinary node, so it reads as an actual star shape rather
+              than a plain blurred disc. */}
+          <polygon
+            id="star-five-point"
+            points="0,-10 2.65,-3.64 9.51,-3.09 4.28,1.39 5.88,8.09 0,4.5 -5.88,8.09 -4.28,1.39 -9.51,-3.09 -2.65,-3.64"
+          />
         </defs>
         <g className={styles.skyLayer}>
           {skyStars.map((s, i) => (
@@ -312,10 +320,11 @@ export function GraphView() {
             // blurred by a chunk of its OWN radius (not a fixed px value), approximates a real
             // radial falloff: a wide, barely-there outer glow; a tighter, brighter mid glow; a
             // crisp, fully-opaque core with no blur at all.
-            const midRadius = radius * 0.6
+            const outerRadius = radius * 0.4
+            const midRadius = radius * 0.32
             const coreRadius = Math.max(3, radius * 0.3)
-            const outerBlur = radius * 0.5
-            const midBlur = radius * 0.22
+            const outerBlur = outerRadius * 0.15
+            const midBlur = midRadius * 0.1
             const hue = isPlainVisited ? hueRotateForNode(node.id) : null
 
             // Same state classes drive fill color on every layer — only presentation (blur
@@ -338,7 +347,7 @@ export function GraphView() {
                 <circle
                   cx={node.x}
                   cy={node.y}
-                  r={radius}
+                  r={outerRadius}
                   style={{ filter: filterFor(outerBlur) }}
                   className={[styles.node, styles.starOuterGlow, ...stateClasses].filter(Boolean).join(' ')}
                 />
@@ -349,10 +358,9 @@ export function GraphView() {
                   style={{ filter: filterFor(midBlur) }}
                   className={[styles.node, styles.starMidGlow, ...stateClasses].filter(Boolean).join(' ')}
                 />
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={coreRadius}
+                <use
+                  href="#star-five-point"
+                  transform={`translate(${node.x}, ${node.y}) scale(${coreRadius / 10})`}
                   style={hue != null ? { filter: `hue-rotate(${hue}deg)` } : undefined}
                   className={[styles.node, styles.starCore, ...stateClasses, isCurrent ? styles.currentNode : ''].filter(Boolean).join(' ')}
                 />

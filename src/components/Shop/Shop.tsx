@@ -571,6 +571,7 @@ interface UpgradeCardProps {
 
 function UpgradeCard({ name, description, isActive, onUse, cost, canAfford, onBuy, minLevel, highestLevel }: UpgradeCardProps) {
   const levelLocked = minLevel !== undefined && (highestLevel ?? 0) < minLevel
+  if (minLevel !== undefined && minLevel > (highestLevel ?? 0) * 1.5) return null
 
   return (
     <div className={[styles.card, isActive ? styles.activeCard : ''].filter(Boolean).join(' ')}>
@@ -610,6 +611,7 @@ function RepeatableUpgradeCard({ info, level, currencyAmount, highestLevel, onBu
   const cost = costForLevel(info, level)
   const levelLocked = level === 0 && highestLevel < info.minLevel
   const extraLocked = level === 0 && (extraLock?.locked ?? false)
+  if (level === 0 && info.minLevel > highestLevel * 1.5) return null
 
   return (
     <div className={styles.card}>

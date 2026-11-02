@@ -4,11 +4,11 @@ import styles from './WalkerToken.module.css'
 interface WalkerTokenProps {
   x: number
   y: number
-  /** How long (ms) the glide to this x/y should take — the edge's actual travel time, so the token arrives exactly as the walker's logical hop completes. 0 while sitting still (discovering/waiting), which keeps it snapped in place and triggers the in-place discovering spin instead of a glide. */
+  /** How long (ms) the glide to this x/y should take — the edge's actual travel time, so the token arrives exactly as the walker's logical hop completes. 0 while sitting still (discovering/waiting), which keeps it snapped in place and triggers the discovering orbit instead of a glide. */
   travelMs: number
-  /** Heading in degrees: the edge currently being crossed while traveling, or the last edge arrived on while sitting still. Points the ship's nose and anchors the spin-in-place discovering animation regardless of direction. */
+  /** Heading in degrees: the edge currently being crossed while traveling, or the last edge arrived on while sitting still. Points the ship's nose and anchors the discovering orbit's exit heading. */
   angle: number
-  /** The rendered radius of the star/beacon this walker is currently standing on. Only used by the main ship's discovering orbit, so its flight circle always clears that specific node's actual size instead of a guessed constant — a degree-4 hub and a plain degree-2 star get differently sized orbits. */
+  /** The rendered radius of the star/beacon this walker is currently standing on, so its discovering orbit always clears that specific node's actual size instead of a guessed constant — a degree-4 hub and a plain degree-2 star get differently sized orbits. */
   nodeRadius: number
   /** 'reverse' is the second walker in Bidirectional Search (starting from the exit); 'main' is walkers[0] — the one the camera follows and whose own arrival at the goal ends the run. 'main' renders as the rocket; 'forward'/'reverse' render as tinted UFO sub-ships so all three stay readable as different roles. */
   variant?: 'forward' | 'reverse' | 'main'
@@ -16,16 +16,20 @@ interface WalkerTokenProps {
 
 /** Orbit radius margin beyond the node's own rendered radius, so the ship's flight circle clears
  * the star's halo rather than clipping through it. */
-const ORBIT_MARGIN = 10
+const ORBIT_MARGIN = 5
+
+/** The orbit circle itself is scaled down from the node-clearing radius above — a full
+ * node-sized loop read as oversized next to the ship, so only half of it is actually used. */
+const ORBIT_SCALE = 0.5
 
 /** Positions are static (baked in by layoutGraph), so a translate() + CSS transition on the outer
  * group gives a smooth glide between nodes with no imperative DOM writes needed — the same trick
  * the old plain-circle version used on cx/cy, just promoted to a transform so a shape (not just a
  * dot) can ride along it. A nested inner group carries the heading rotation and the discovering
  * animation, kept separate so they don't have to fight the position transition for the same
- * property on the same element. While discovering, the main ship flies a small orbit around the
- * node (the mockup's original "investigating" gesture — a real circular flight path, not a spin);
- * UFO sub-ships spin in place instead, which is enough motion for their smaller, simpler shape. */
+ * property on the same element. Every ship class shares the same discovering gesture — a real
+ * orbit around the node — so "investigating" reads as one consistent language across the main
+ * ship and every UFO sub-ship, not a different motion per shape. */
 export function WalkerToken({ x, y, travelMs, angle, nodeRadius, variant = 'forward' }: WalkerTokenProps) {
   const discovering = travelMs === 0
   const isMain = variant === 'main'
@@ -36,14 +40,10 @@ export function WalkerToken({ x, y, travelMs, angle, nodeRadius, variant = 'forw
       style={{ transform: `translate(${x}px, ${y}px)`, transitionDuration: `${travelMs}ms` }}
     >
       <g
-        className={[
-          styles.heading,
-          variant === 'reverse' ? styles.reverse : '',
-          discovering ? (isMain ? styles.discoveringOrbit : styles.discoveringSpin) : '',
-        ]
+        className={[styles.heading, variant === 'reverse' ? styles.reverse : '', discovering ? styles.discoveringOrbit : '']
           .filter(Boolean)
           .join(' ')}
-        style={{ transform: `rotate(${angle}deg)`, '--orbit-r': `${nodeRadius + ORBIT_MARGIN}px` } as CSSProperties}
+        style={{ transform: `rotate(${angle}deg)`, '--orbit-r': `${(nodeRadius + ORBIT_MARGIN) * ORBIT_SCALE}px` } as CSSProperties}
       >
         {isMain ? (
           <>

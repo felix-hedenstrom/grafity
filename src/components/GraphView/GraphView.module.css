@@ -18,19 +18,22 @@
 }
 
 .dustStar {
-  fill: #cfe0ff;
+  fill: #5a648f;
   animation-name: dustTwinkle;
   animation-iteration-count: infinite;
   animation-timing-function: ease-in-out;
 }
 
 @keyframes dustTwinkle {
+  /* animation-name here overrides the element's own inline opacity for the whole 0%-100% span
+     (no gap for the base value to show through), so the actual brightness range lives entirely
+     in these two numbers — keep both well below any gameplay star's opacity. */
   0%,
   100% {
-    opacity: 0.2;
+    opacity: 0.08;
   }
   50% {
-    opacity: 1;
+    opacity: 0.4;
   }
 }
 
@@ -100,11 +103,11 @@
    fully-opaque core. Blur amounts are set inline per-node (proportional to that node's own
    radius) in GraphView.tsx — opacity here is the only part that's a fixed ratio between layers. */
 .starOuterGlow {
-  opacity: 0.22;
+  opacity: 0.035;
 }
 
 .starMidGlow {
-  opacity: 0.5;
+  opacity: 0.1;
 }
 
 .starCore {
@@ -167,6 +170,46 @@
 
 .plannedPath {
   fill: #ec4899;
+}
+
+/* The core needs to be visibly BRIGHTER than its own halo, not just more opaque — two layers of
+   the exact same color just read as one blurry blob with no "there's a light source here" pop.
+   Each state gets a lightened core override here, combined-selector specificity wins over the
+   plain color rules above regardless of source order. */
+.starCore.node {
+  fill: #cfd6f0;
+}
+
+.starCore.visited {
+  fill: #eef1fb;
+}
+
+.starCore.start {
+  fill: #b9ffd9;
+}
+
+.starCore.goal {
+  fill: #ffd1d1;
+}
+
+.starCore.inMemory {
+  fill: #bdf5d0;
+}
+
+.starCore.inStack {
+  fill: #ffe3b0;
+}
+
+.starCore.bestCandidate {
+  fill: #bdd8ff;
+}
+
+.starCore.frontier {
+  fill: #b0f0e6;
+}
+
+.starCore.plannedPath {
+  fill: #ffd1e6;
 }
 
 @keyframes fade-in {

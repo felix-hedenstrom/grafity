@@ -1,20 +1,28 @@
 .position {
   transition-property: transform;
-  transition-timing-function: linear;
+  /* Eases out of the orbit hold and into the travel glide instead of snapping straight into a
+     constant-speed line — most noticeable on short hops where linear made the launch feel
+     instantaneous. */
+  transition-timing-function: ease-in-out;
 }
 
 .heading {
-  /* Only matters for .discoveringSpin below (a pure rotate with no translate component).
-     Without transform-box, transform-origin: center would resolve to the center of the whole
-     SVG viewBox, not this element's own shapes — the spin would swing around the entire canvas
-     instead of in place. fill-box makes "center" mean this element's own bounding box instead. */
+  /* The heading rotate above (a pure rotate with no translate component) needs this: without
+     transform-box, transform-origin: center would resolve to the center of the whole SVG
+     viewBox, not this element's own shapes — the ship would swing around the entire canvas
+     instead of turning in place. fill-box makes "center" mean this element's own bounding box. */
   transform-box: fill-box;
   transform-origin: center;
+  /* Covers the moment discoveringOrbit is removed: without this, the ship's heading snaps from
+     wherever it was mid-loop straight to rotate(angle). With it, that drop gets picked up as a
+     transition instead and eases into the travel heading. */
+  transition: transform 220ms ease-out;
 }
 
-/* Main ship, discovering: a real orbit around the node — translate+rotate every step, so the
-   rotation happens around each step's own freshly-translated local origin and never needs
-   transform-origin at all (same reason this needed no fill-box trick in the original mockup).
+/* Discovering, for every ship class: a real orbit around the node — translate+rotate every
+   step, so the rotation happens around each step's own freshly-translated local origin and
+   never needs transform-origin at all (same reason this needed no fill-box trick in the
+   original mockup).
    Nose stays tangent to the circle throughout. 8 steps around a circle whose radius is driven by
    --orbit-r (set per-instance from the actual node's rendered size, see WalkerToken.tsx) — a
    degree-4 hub's orbit is visibly wider than a plain degree-2 star's, instead of one fixed size
@@ -53,21 +61,6 @@
 
 .discoveringOrbit {
   animation: orbitInPlace 1.1s linear infinite;
-}
-
-/* UFO sub-ships, discovering: spin in place — two full turns so it's unmistakably
-   "investigating" rather than just jittering. Relies on .heading's fill-box fix above. */
-@keyframes spinInPlace {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(720deg);
-  }
-}
-
-.discoveringSpin {
-  animation: spinInPlace 1.1s linear infinite;
 }
 
 /* ---------- main ship: a dart-hulled rocket ---------- */
@@ -121,15 +114,18 @@
 .exhaustOuter {
   fill: rgba(255, 216, 154, 0.75);
   animation: exhaustFlickerOuter 1.3s ease-in-out infinite;
+  transition: opacity 220ms ease-out;
 }
 
 .exhaustCore {
   fill: rgba(255, 246, 224, 0.9);
   animation: exhaustFlickerCore 0.8s ease-in-out infinite;
+  transition: opacity 220ms ease-out;
 }
 
 /* Hides the exhaust while discovering without unmounting it — unmounting would shrink the
-   group's fill-box and shift the rotation pivot set on .heading. */
+   group's fill-box and shift the rotation pivot set on .heading. The transitions above fade it
+   in/out instead of an instant toggle, so it catches up with the heading's own ease on launch. */
 .exhaustHidden {
   opacity: 0;
   animation: none;
@@ -216,7 +212,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .discoveringOrbit,
-  .discoveringSpin,
   .exhaustOuter,
   .exhaustCore,
   .rimLightA,
