@@ -13,6 +13,10 @@ interface WalkerTokenProps {
   nodeRadius: number
   /** 'reverse' is the second walker in Bidirectional Search (starting from the exit); 'main' is walkers[0] — the one the camera follows and whose own arrival at the goal ends the run. 'main' renders as the rocket; 'forward'/'reverse' render as tinted UFO sub-ships so all three stay readable as different roles. */
   variant?: 'forward' | 'reverse' | 'main'
+  /** Multiplies the ship's rendered size, so it can be scaled up as the camera's viewBox window
+   * grows on big, spread-out graphs (high levels) — without this, ships shrink 1:1 with
+   * everything else in view until barely visible. Defaults to 1 (today's fixed size). */
+  scale?: number
 }
 
 /** Orbit radius margin beyond the node's own rendered radius, so the ship's flight circle clears
@@ -31,7 +35,7 @@ const ORBIT_SCALE = 0.5
  * property on the same element. Every ship class shares the same discovering gesture — a real
  * orbit around the node — so "investigating" reads as one consistent language across the main
  * ship and every UFO sub-ship, not a different motion per shape. */
-export function WalkerToken({ x, y, travelMs, angle, nodeRadius, variant = 'forward' }: WalkerTokenProps) {
+export function WalkerToken({ x, y, travelMs, angle, nodeRadius, variant = 'forward', scale = 1 }: WalkerTokenProps) {
   const discovering = travelMs === 0
   const isMain = variant === 'main'
 
@@ -129,12 +133,12 @@ export function WalkerToken({ x, y, travelMs, angle, nodeRadius, variant = 'forw
           .join(' ')}
         style={
           {
-            transform: frozenTransform ?? `rotate(${displayAngle}deg)`,
+            transform: `${frozenTransform ?? `rotate(${displayAngle}deg)`} scale(${scale})`,
             // The freeze-frame itself must apply with no transition — it's only there to give
             // the *next* commit a real "before" value, so it has to land instantly, exactly
             // matching the orbit's last live frame, with zero visible motion of its own.
             transitionDuration: frozenTransform ? '0ms' : undefined,
-            '--orbit-r': `${(nodeRadius + ORBIT_MARGIN) * ORBIT_SCALE}px`,
+            '--orbit-r': `${(nodeRadius + ORBIT_MARGIN) * ORBIT_SCALE * scale}px`,
           } as CSSProperties
         }
       >

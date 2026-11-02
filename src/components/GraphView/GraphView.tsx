@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { CSSProperties } from 'react'
-import { computeDynamicViewSize, computeGraphBounds, computeViewBounds } from '../../game/graph/layout'
+import { MIN_VIEW_SIZE, computeDynamicViewSize, computeGraphBounds, computeViewBounds } from '../../game/graph/layout'
 import { edgeId } from '../../game/graph/types'
 import type { GraphNode, NodeId } from '../../game/graph/types'
 import { getStrategy } from '../../game/strategies'
@@ -44,6 +44,9 @@ function starRadius(degree: number): number {
 /** Start/goal are deliberately exempt from degree sizing — always the two biggest, most visible
  * stars on screen regardless of how many edges they happen to have. */
 const BEACON_RADIUS = 28
+/** Caps how big ships get allowed to grow at the most extreme zoom-out — without a cap, the most
+ * spread-out high-level graphs would blow the ships up well past what reads as "ship-sized". */
+const MAX_WALKER_SCALE = 2.5
 
 function radiusForNode(node: GraphNode, degree: number): number {
   return node.isStart || node.isGoal ? BEACON_RADIUS : starRadius(degree)
@@ -129,6 +132,10 @@ export function GraphView() {
   // walker every tick once windowed, and jumping the viewBox there instantly would read as a
   // jarring teleport rather than the walker simply moving.
   const bounds = useSmoothedBounds(targetBounds, graph)
+  // Ships are fixed-size SVG coordinates, so as the viewBox window grows on big, spread-out
+  // graphs (high levels) they'd otherwise shrink along with everything else until barely
+  // visible — scale them back up relative to the smallest window size to stay legible.
+  const walkerScale = useMemo(() => Math.min(MAX_WALKER_SCALE, Math.max(1, bounds.width / MIN_VIEW_SIZE)), [bounds.width])
   // The minimap only earns its keep once the main view has actually had to window down to less
   // than the whole graph — on a graph that already fits, it would just be a smaller duplicate.
   const fullBounds = useMemo(() => computeGraphBounds(graph), [graph])
@@ -393,6 +400,7 @@ export function GraphView() {
               angle={headingAngle(fromId, toId, nodesById)}
               nodeRadius={nodeRadius}
               variant={i === 0 ? 'main' : 'forward'}
+              scale={walkerScale}
             />
           ) : null
         })}
@@ -411,6 +419,7 @@ export function GraphView() {
                 angle={headingAngle(fromId, toId, nodesById)}
                 nodeRadius={nodeRadius}
                 variant="reverse"
+                scale={walkerScale}
               />
             ) : null
           })()}
