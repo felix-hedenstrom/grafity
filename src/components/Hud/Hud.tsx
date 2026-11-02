@@ -2,6 +2,7 @@ import { computeDistancePerSecond, computeMomentumMultiplier, QUICK_STEPS_SPEED_
 import { useNow } from '../../hooks/useNow'
 import { useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
+import { useUiStore } from '../../store/useUiStore'
 import styles from './Hud.module.css'
 
 export function Hud() {
@@ -12,6 +13,8 @@ export function Hud() {
   const runStartedAt = useRunStore((s) => s.runStartedAt)
   const discoveredCount = useRunStore((s) => s.discovery.discoveredNodeIds.size)
   const totalNodes = useRunStore((s) => s.graph.nodes.length)
+  const openIntro = useUiStore((s) => s.openIntro)
+  const openOptions = useUiStore((s) => s.openOptions)
 
   // Momentum's display needs to tick forward with real time even between game ticks.
   const now = useNow()
@@ -46,6 +49,15 @@ export function Hud() {
           {quickStepsLevel > 0 && <div>{`Quick Steps: +${quickStepsBonus.toFixed(1)} distance/sec`}</div>}
           {momentumLevel > 0 && <div>{`Momentum: +${momentumPercent}%`}</div>}
         </div>
+      </div>
+
+      <div className={styles.iconRow}>
+        <button type="button" className={styles.iconButton} onClick={openIntro} aria-label="Show introduction">
+          ?
+        </button>
+        <button type="button" className={styles.iconButton} onClick={openOptions} aria-label="Open options">
+          ⚙
+        </button>
       </div>
     </div>
   )

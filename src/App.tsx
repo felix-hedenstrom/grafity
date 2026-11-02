@@ -2,7 +2,9 @@ import { useEffect } from 'react'
 import styles from './App.module.css'
 import { AchievementToast } from './components/AchievementToast/AchievementToast'
 import { GraphView } from './components/GraphView/GraphView'
+import { GreetingToast } from './components/GreetingToast/GreetingToast'
 import { Hud } from './components/Hud/Hud'
+import { OptionsModal } from './components/OptionsModal/OptionsModal'
 import { Shop } from './components/Shop/Shop'
 import { startGame } from './game'
 import { useProgressionStore } from './store/useProgressionStore'
@@ -32,6 +34,8 @@ function App() {
         </div>
       </div>
       <AchievementToast />
+      <GreetingToast />
+      <OptionsModal />
     </main>
   )
 }

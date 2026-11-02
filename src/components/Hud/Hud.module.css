@@ -61,3 +61,29 @@
   font-family: var(--mono);
   line-height: 1.5;
 }
+
+.iconRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.iconButton {
+  font: inherit;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  color: var(--text-h);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconButton:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}

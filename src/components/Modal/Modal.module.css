@@ -1,0 +1,62 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.panel {
+  max-width: 420px;
+  width: calc(100% - 48px);
+  max-height: 80vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-bg);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.closeButton {
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.closeButton:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+.body {
+  padding: 16px;
+}
