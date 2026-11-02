@@ -1,3 +1,4 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import styles from './WalkerToken.module.css'
 
@@ -34,16 +35,99 @@ export function WalkerToken({ x, y, travelMs, angle, nodeRadius, variant = 'forw
   const discovering = travelMs === 0
   const isMain = variant === 'main'
 
+  const headingRef = useRef<SVGGElement>(null)
+  const wasDiscoveringRef = useRef(discovering)
+  const unwrappedAngleRef = useRef(angle)
+  const [displayAngle, setDisplayAngle] = useState(angle)
+  // Inline transform override that freezes .heading at its last live orbit frame for exactly
+  // one paint when discovering ends, so the CSS transition has a real "before" value to animate
+  // from. Without this, React removes .discoveringOrbit and sets the final rotate(angle) in the
+  // same commit — since the class and the target both change together, the browser's transition
+  // starts from the underlying (non-animated) inline style, not from wherever the spin actually
+  // was, producing a snap instead of a smooth hand-off.
+  const [frozenTransform, setFrozenTransform] = useState<string | null>(null)
+  // getComputedStyle at the moment discovering flips off already reflects the post-commit style
+  // (useLayoutEffect runs after DOM mutation), so the live orbit position has to be captured
+  // continuously, one frame ahead of time, while the orbit animation is still running.
+  const liveOrbitTransformRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!discovering) return
+    let raf: number
+    const capture = () => {
+      const el = headingRef.current
+      if (el) liveOrbitTransformRef.current = getComputedStyle(el).transform
+      raf = requestAnimationFrame(capture)
+    }
+    raf = requestAnimationFrame(capture)
+    return () => cancelAnimationFrame(raf)
+  }, [discovering])
+
+  // The discovering orbit spins .heading through its own raw keyframe angles (90deg..450deg,
+  // looping), completely independent of `angle`. If discovering just ended, a naive transition
+  // would interpolate straight from wherever that spin happened to be to the raw target angle —
+  // often the long way around (up to ~350deg of unwind) since the two numbers share no
+  // relationship. Using the last captured live rotation and re-expressing the target as the
+  // nearest equivalent (mod 360) makes the hand-off always take the short way.
+  useLayoutEffect(() => {
+    const wasDiscovering = wasDiscoveringRef.current
+    wasDiscoveringRef.current = discovering
+
+    if (wasDiscovering && !discovering) {
+      const snapshot = liveOrbitTransformRef.current
+      let base = unwrappedAngleRef.current
+      if (snapshot && snapshot !== 'none') {
+        const m = new DOMMatrixReadOnly(snapshot)
+        base = (Math.atan2(m.b, m.a) * 180) / Math.PI
+      }
+      setFrozenTransform(snapshot)
+      const delta = ((angle - base + 540) % 360) - 180
+      const next = base + delta
+      unwrappedAngleRef.current = next
+      setDisplayAngle(next)
+      return
+    }
+
+    const base = unwrappedAngleRef.current
+    const delta = ((angle - base + 540) % 360) - 180
+    const next = base + delta
+    unwrappedAngleRef.current = next
+    setDisplayAngle(next)
+  }, [angle, discovering])
+
+  // Releasing the freeze has to happen in a *separate, later* commit than setting it — doing
+  // both from the same useLayoutEffect (even via requestAnimationFrame) risks React flushing
+  // the follow-up update via microtask before the browser ever paints the frozen frame, which
+  // collapses the two steps into one and brings back the wrong-base snap. useEffect is
+  // guaranteed to run only after the browser has painted, so scheduling the release here — one
+  // effect-cycle after the freeze was committed — guarantees the frozen frame actually painted
+  // first, giving the transition a real value to animate away from.
+  useEffect(() => {
+    if (frozenTransform === null) return
+    const raf = requestAnimationFrame(() => setFrozenTransform(null))
+    return () => cancelAnimationFrame(raf)
+  }, [frozenTransform])
+
   return (
     <g
       className={styles.position}
       style={{ transform: `translate(${x}px, ${y}px)`, transitionDuration: `${travelMs}ms` }}
     >
       <g
+        ref={headingRef}
         className={[styles.heading, variant === 'reverse' ? styles.reverse : '', discovering ? styles.discoveringOrbit : '']
           .filter(Boolean)
           .join(' ')}
-        style={{ transform: `rotate(${angle}deg)`, '--orbit-r': `${(nodeRadius + ORBIT_MARGIN) * ORBIT_SCALE}px` } as CSSProperties}
+        style={
+          {
+            transform: frozenTransform ?? `rotate(${displayAngle}deg)`,
+            // The freeze-frame itself must apply with no transition — it's only there to give
+            // the *next* commit a real "before" value, so it has to land instantly, exactly
+            // matching the orbit's last live frame, with zero visible motion of its own.
+            transitionDuration: frozenTransform ? '0ms' : undefined,
+            '--orbit-r': `${(nodeRadius + ORBIT_MARGIN) * ORBIT_SCALE}px`,
+          } as CSSProperties
+        }
       >
         {isMain ? (
           <>

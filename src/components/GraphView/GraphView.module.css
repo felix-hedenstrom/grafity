@@ -66,7 +66,11 @@
   stroke-linecap: round;
   filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
   animation-name: edgeReveal;
-  animation-timing-function: linear;
+  /* Matches WalkerToken's .position transition curve exactly — same duration, same easing —
+     so the drawn line and the ship glide stay pinned together throughout the hop instead of
+     just agreeing at the two endpoints. A linear draw against an ease-in-out ship visibly
+     drifted ahead of/behind the ship mid-flight even though both finished at the same time. */
+  animation-timing-function: ease-in-out;
   animation-fill-mode: forwards;
 }
 
