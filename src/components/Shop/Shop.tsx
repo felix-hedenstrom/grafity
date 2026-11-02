@@ -39,6 +39,7 @@ import {
   REVISIT_BONUS_UPGRADE_INFO,
   SEARCHER_UPGRADE_INFO,
   UFO_SPEED_UPGRADE_INFO,
+  UNLOCK_UFO_UPGRADE,
   UPGRADES,
 } from '../../game/upgrades/definitions'
 import { costForLevel, type RepeatableUpgradeInfo } from '../../game/upgrades/scaling'
@@ -99,7 +100,7 @@ function usePurchasableCounts(): Partial<Record<Tab, number>> {
   const amount = currency.amount
   const nextLockedUpgradeId = getNextLockedUpgradeId(purchasedUpgradeIds)
   const nextLockedUpgrade = UPGRADES.find((u) => u.id === nextLockedUpgradeId)
-  const mutexOwned = purchasedUpgradeIds.includes(MUTEX_UPGRADE.id)
+  const unlockUfoOwned = purchasedUpgradeIds.includes(UNLOCK_UFO_UPGRADE.id)
 
   return {
     Algorithms: nextLockedUpgrade && canAffordOneTime(nextLockedUpgrade, false, amount, highestGraphNodeCount) ? 1 : 0,
@@ -118,19 +119,22 @@ function usePurchasableCounts(): Partial<Record<Tab, number>> {
       Number(canAffordRepeatable(QUICK_STEPS_UPGRADE_INFO, quickStepsLevel, amount, highestGraphNodeCount)) +
       Number(canAffordRepeatable(DISCOVER_WAIT_UPGRADE_INFO, discoverWaitLevel, amount, highestGraphNodeCount)) +
       Number(canAffordRepeatable(MOMENTUM_UPGRADE_INFO, momentumLevel, amount, highestGraphNodeCount)) +
+      Number(unlockUfoOwned && canAffordRepeatable(SEARCHER_UPGRADE_INFO, searcherLevel, amount, highestGraphNodeCount)) +
       Number(
-        mutexOwned &&
+        unlockUfoOwned &&
           (mainWalkerSpeedLevel > 0 || searcherLevel > 0) &&
           canAffordRepeatable(MAIN_WALKER_SPEED_UPGRADE_INFO, mainWalkerSpeedLevel, amount, highestGraphNodeCount),
       ) +
       Number(
-        mutexOwned && ufoSpeedLevel < UFO_SPEED_MAX_LEVEL && canAffordRepeatable(UFO_SPEED_UPGRADE_INFO, ufoSpeedLevel, amount, highestGraphNodeCount),
+        unlockUfoOwned &&
+          ufoSpeedLevel < UFO_SPEED_MAX_LEVEL &&
+          canAffordRepeatable(UFO_SPEED_UPGRADE_INFO, ufoSpeedLevel, amount, highestGraphNodeCount),
       ),
     Research:
       Number(canAffordOneTime(CLARITY_UPGRADE, clarityLevel > 0, amount, highestGraphNodeCount)) +
       Number(canAffordOneTime(MINIMAP_UPGRADE, purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id), amount, highestGraphNodeCount)) +
-      Number(canAffordOneTime(MUTEX_UPGRADE, purchasedUpgradeIds.includes(MUTEX_UPGRADE.id), amount, highestGraphNodeCount)) +
-      Number(mutexOwned && canAffordRepeatable(SEARCHER_UPGRADE_INFO, searcherLevel, amount, highestGraphNodeCount)),
+      Number(canAffordOneTime(UNLOCK_UFO_UPGRADE, unlockUfoOwned, amount, highestGraphNodeCount)) +
+      Number(canAffordOneTime(MUTEX_UPGRADE, purchasedUpgradeIds.includes(MUTEX_UPGRADE.id), amount, highestGraphNodeCount)),
   }
 }
 
@@ -366,10 +370,11 @@ function SpeedTab() {
   const mainWalkerSpeedLevel = useProgressionStore((s) => s.mainWalkerSpeedLevel)
   const ufoSpeedLevel = useProgressionStore((s) => s.ufoSpeedLevel)
   const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
-  const mutexOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(MUTEX_UPGRADE.id))
+  const unlockUfoOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(UNLOCK_UFO_UPGRADE.id))
   const purchaseQuickStepsLevel = useProgressionStore((s) => s.purchaseQuickStepsLevel)
   const purchaseDiscoverWaitLevel = useProgressionStore((s) => s.purchaseDiscoverWaitLevel)
   const purchaseMomentumLevel = useProgressionStore((s) => s.purchaseMomentumLevel)
+  const purchaseSearcherLevel = useProgressionStore((s) => s.purchaseSearcherLevel)
   const purchaseMainWalkerSpeedLevel = useProgressionStore((s) => s.purchaseMainWalkerSpeedLevel)
   const purchaseUfoSpeedLevel = useProgressionStore((s) => s.purchaseUfoSpeedLevel)
   const runStartedAt = useRunStore((s) => s.runStartedAt)
@@ -421,7 +426,16 @@ function SpeedTab() {
         highestLevel={highestGraphNodeCount}
         onBuy={purchaseDiscoverWaitLevel}
       />
-      {mutexOwned && (
+      {unlockUfoOwned && (
+        <RepeatableUpgradeCard
+          info={SEARCHER_UPGRADE_INFO}
+          level={searcherLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseSearcherLevel}
+        />
+      )}
+      {unlockUfoOwned && (
         <RepeatableUpgradeCard
           info={MAIN_WALKER_SPEED_UPGRADE_INFO}
           level={mainWalkerSpeedLevel}
@@ -431,7 +445,7 @@ function SpeedTab() {
           extraLock={{ locked: searcherLevel === 0, message: 'Requires Extra Searcher' }}
         />
       )}
-      {mutexOwned && (
+      {unlockUfoOwned && (
         <RepeatableUpgradeCard
           info={UFO_SPEED_UPGRADE_INFO}
           level={ufoSpeedLevel}
@@ -453,12 +467,12 @@ function ResearchTab() {
   const minimapEnabled = useProgressionStore((s) => s.minimapEnabled)
   const purchaseMinimap = useProgressionStore((s) => s.purchaseMinimap)
   const toggleMinimap = useProgressionStore((s) => s.toggleMinimap)
+  const unlockUfoOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(UNLOCK_UFO_UPGRADE.id))
+  const purchaseUnlockUfo = useProgressionStore((s) => s.purchaseUnlockUfo)
   const mutexOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(MUTEX_UPGRADE.id))
   const mutexEnabled = useProgressionStore((s) => s.mutexEnabled)
   const purchaseMutex = useProgressionStore((s) => s.purchaseMutex)
   const toggleMutex = useProgressionStore((s) => s.toggleMutex)
-  const searcherLevel = useProgressionStore((s) => s.searcherLevel)
-  const purchaseSearcherLevel = useProgressionStore((s) => s.purchaseSearcherLevel)
   const clarityOwned = clarityLevel > 0
 
   return (
@@ -484,6 +498,18 @@ function ResearchTab() {
         onBuy={minimapOwned ? undefined : purchaseMinimap}
         minLevel={MINIMAP_UPGRADE.minLevel}
         highestLevel={highestGraphNodeCount}
+        isToggle
+      />
+      <UpgradeCard
+        name={UNLOCK_UFO_UPGRADE.name}
+        description={UNLOCK_UFO_UPGRADE.description}
+        isActive={unlockUfoOwned}
+        onUse={undefined}
+        cost={unlockUfoOwned ? undefined : UNLOCK_UFO_UPGRADE.cost}
+        canAfford={currency.amount >= UNLOCK_UFO_UPGRADE.cost}
+        onBuy={unlockUfoOwned ? undefined : purchaseUnlockUfo}
+        minLevel={UNLOCK_UFO_UPGRADE.minLevel}
+        highestLevel={highestGraphNodeCount}
       />
       <UpgradeCard
         name={MUTEX_UPGRADE.name}
@@ -495,16 +521,8 @@ function ResearchTab() {
         onBuy={mutexOwned ? undefined : purchaseMutex}
         minLevel={MUTEX_UPGRADE.minLevel}
         highestLevel={highestGraphNodeCount}
+        isToggle
       />
-      {mutexOwned && (
-        <RepeatableUpgradeCard
-          info={SEARCHER_UPGRADE_INFO}
-          level={searcherLevel}
-          currencyAmount={currency.amount}
-          highestLevel={highestGraphNodeCount}
-          onBuy={purchaseSearcherLevel}
-        />
-      )}
     </div>
   )
 }
@@ -572,9 +590,11 @@ interface UpgradeCardProps {
   /** The level (graph node count) that must have been reached at least once to buy this — absent for Random Walk, which has no cost. */
   minLevel?: number
   highestLevel?: number
+  /** Set for upgrades like Minimap/Traffic Control where onUse flips a true on/off flag, rather than selecting a strategy — keeps the button clickable (and relabeled On/Off) instead of disabling once active. */
+  isToggle?: boolean
 }
 
-function UpgradeCard({ name, description, isActive, onUse, cost, canAfford, onBuy, minLevel, highestLevel }: UpgradeCardProps) {
+function UpgradeCard({ name, description, isActive, onUse, cost, canAfford, onBuy, minLevel, highestLevel, isToggle }: UpgradeCardProps) {
   const levelLocked = minLevel !== undefined && (highestLevel ?? 0) < minLevel
   if (minLevel !== undefined && minLevel > (highestLevel ?? 0) * 1.5) return null
 
@@ -592,6 +612,10 @@ function UpgradeCard({ name, description, isActive, onUse, cost, canAfford, onBu
             {`Buy — ${cost}`}
           </button>
         )
+      ) : isToggle ? (
+        <button type="button" className={styles.buyButton} onClick={onUse}>
+          {isActive ? 'On' : 'Off'}
+        </button>
       ) : (
         <button type="button" className={styles.buyButton} disabled={isActive} onClick={onUse}>
           {isActive ? 'Active' : 'Use'}

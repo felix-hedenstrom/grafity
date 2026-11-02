@@ -22,6 +22,7 @@ import {
   REVISIT_BONUS_UPGRADE_INFO,
   SEARCHER_UPGRADE_INFO,
   UFO_SPEED_UPGRADE_INFO,
+  UNLOCK_UFO_UPGRADE,
   UPGRADES,
 } from '../game/upgrades/definitions'
 import { costForLevel } from '../game/upgrades/scaling'
@@ -76,6 +77,7 @@ interface ProgressionState {
   purchaseClarity: () => boolean
   purchaseMinimap: () => boolean
   toggleMinimap: () => void
+  purchaseUnlockUfo: () => boolean
   purchaseMutex: () => boolean
   toggleMutex: () => void
   toggleTheme: () => void
@@ -230,7 +232,11 @@ export const useProgressionStore = create<ProgressionState>()(
 
       purchaseSearcherLevel: () => {
         const state = get()
-        if (state.searcherLevel === 0 && state.highestGraphNodeCount < SEARCHER_UPGRADE_INFO.minLevel) return false
+        if (
+          state.searcherLevel === 0 &&
+          (state.highestGraphNodeCount < SEARCHER_UPGRADE_INFO.minLevel || !state.purchasedUpgradeIds.includes(UNLOCK_UFO_UPGRADE.id))
+        )
+          return false
         const cost = costForLevel(SEARCHER_UPGRADE_INFO, state.searcherLevel)
         if (state.currency.amount < cost) return false
 
@@ -324,6 +330,18 @@ export const useProgressionStore = create<ProgressionState>()(
       },
 
       toggleMinimap: () => set((state) => ({ minimapEnabled: !state.minimapEnabled })),
+
+      purchaseUnlockUfo: () => {
+        const state = get()
+        if (state.purchasedUpgradeIds.includes(UNLOCK_UFO_UPGRADE.id)) return false
+        if (state.currency.amount < UNLOCK_UFO_UPGRADE.cost || state.highestGraphNodeCount < UNLOCK_UFO_UPGRADE.minLevel) return false
+
+        set({
+          currency: spend(state.currency, UNLOCK_UFO_UPGRADE.cost),
+          purchasedUpgradeIds: [...state.purchasedUpgradeIds, UNLOCK_UFO_UPGRADE.id],
+        })
+        return true
+      },
 
       purchaseMutex: () => {
         const state = get()

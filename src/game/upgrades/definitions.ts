@@ -297,6 +297,15 @@ export const MINIMAP_UPGRADE: UpgradeDefinition = {
   minLevel: 40,
 }
 
+/** Unlock UFO is a one-time purchase (not repeatable) — required before Extra Searcher (and, transitively, Spaceship Speed and UFO Speed) can be bought at all. Comes before Traffic Control. */
+export const UNLOCK_UFO_UPGRADE: UpgradeDefinition = {
+  id: 'unlock-ufo',
+  name: 'Unlock UFO',
+  description: 'Allows a UFO to join the search — required before Extra Searcher can be bought.',
+  cost: 300,
+  minLevel: 30,
+}
+
 /** Traffic Control is a one-time unlock (not repeatable) — once owned it can be toggled on or off
  * freely. While on, no two walkers may occupy or cross into the same node at the same time. */
 export const MUTEX_UPGRADE: UpgradeDefinition = {
