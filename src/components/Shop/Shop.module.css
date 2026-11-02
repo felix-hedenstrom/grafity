@@ -4,8 +4,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--code-bg);
-  height: 70vh;
-  max-height: 600px;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -52,9 +51,8 @@
 }
 
 .shop {
-  display: flex;
-  flex-direction: column;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 12px;
   padding: 16px;
 }
