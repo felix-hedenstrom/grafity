@@ -133,7 +133,7 @@ export function WalkerToken({ x, y, travelMs, angle, nodeRadius, variant = 'forw
           .join(' ')}
         style={
           {
-            transform: `${frozenTransform ?? `rotate(${displayAngle}deg)`} scale(${scale})`,
+            transform: frozenTransform ?? `rotate(${displayAngle}deg)`,
             // The freeze-frame itself must apply with no transition — it's only there to give
             // the *next* commit a real "before" value, so it has to land instantly, exactly
             // matching the orbit's last live frame, with zero visible motion of its own.
@@ -142,31 +142,38 @@ export function WalkerToken({ x, y, travelMs, angle, nodeRadius, variant = 'forw
           } as CSSProperties
         }
       >
-        {isMain ? (
-          <>
-            <ellipse className={styles.hullHalo} cx="-2" cy="0" rx="7" ry="4" />
-            {/* Always mounted (never conditionally rendered) so the group's bounding box —
-                and thus the fill-box rotation pivot above — never shifts between states;
-                only opacity toggles between discovering and traveling. */}
-            <polygon className={[styles.exhaustOuter, discovering ? styles.exhaustHidden : ''].filter(Boolean).join(' ')} points="-5,-2.5 -5,2.5 -16,0" />
-            <polygon className={[styles.exhaustCore, discovering ? styles.exhaustHidden : ''].filter(Boolean).join(' ')} points="-5,-1 -5,1 -11,0" />
-            <polygon className={styles.hull} points="8,0 -5,-4 -2,0 -5,4" />
-            <circle className={styles.cockpitOuter} cx="2" cy="0" r="1.3" />
-            <circle className={styles.cockpitInner} cx="2" cy="0" r="0.8" />
-          </>
-        ) : (
-          <>
-            <ellipse className={styles.saucerShadow} cx="0" cy="2.4" rx="5.5" ry="1" />
-            <ellipse className={styles.saucer} cx="0" cy="1.4" rx="6.5" ry="1.8" />
-            <ellipse className={styles.dome} cx="0" cy="-1" rx="3.5" ry="3" />
-            <ellipse className={styles.alienHead} cx="0" cy="-1.1" rx="1.6" ry="1.8" />
-            <ellipse className={styles.alienEye} cx="-0.6" cy="-1.3" rx="0.4" ry="0.6" />
-            <ellipse className={styles.alienEye} cx="0.6" cy="-1.3" rx="0.4" ry="0.6" />
-            <circle className={styles.rimLightA} cx="-4.6" cy="1.5" r="0.5" />
-            <circle className={styles.rimLightB} cx="0" cy="2.1" r="0.5" />
-            <circle className={styles.rimLightC} cx="4.6" cy="1.5" r="0.5" />
-          </>
-        )}
+        {/* Scale lives on its own group, separate from .heading above: .heading's transform is
+            fully owned by the discoveringOrbit CSS animation while orbiting (an animated
+            transform property overrides any inline value for that same property), which would
+            silently drop a scale(scale) factor placed there instead. Nesting it here means the
+            ship's rendered size stays correct in both the traveling and discovering states. */}
+        <g style={{ transform: `scale(${scale})`, transformOrigin: '0px 0px' } as CSSProperties}>
+          {isMain ? (
+            <>
+              <ellipse className={styles.hullHalo} cx="-2" cy="0" rx="7" ry="4" />
+              {/* Always mounted (never conditionally rendered) so the group's bounding box —
+                  and thus the fill-box rotation pivot above — never shifts between states;
+                  only opacity toggles between discovering and traveling. */}
+              <polygon className={[styles.exhaustOuter, discovering ? styles.exhaustHidden : ''].filter(Boolean).join(' ')} points="-5,-2.5 -5,2.5 -16,0" />
+              <polygon className={[styles.exhaustCore, discovering ? styles.exhaustHidden : ''].filter(Boolean).join(' ')} points="-5,-1 -5,1 -11,0" />
+              <polygon className={styles.hull} points="8,0 -5,-4 -2,0 -5,4" />
+              <circle className={styles.cockpitOuter} cx="2" cy="0" r="1.3" />
+              <circle className={styles.cockpitInner} cx="2" cy="0" r="0.8" />
+            </>
+          ) : (
+            <>
+              <ellipse className={styles.saucerShadow} cx="0" cy="2.4" rx="5.5" ry="1" />
+              <ellipse className={styles.saucer} cx="0" cy="1.4" rx="6.5" ry="1.8" />
+              <ellipse className={styles.dome} cx="0" cy="-1" rx="3.5" ry="3" />
+              <ellipse className={styles.alienHead} cx="0" cy="-1.1" rx="1.6" ry="1.8" />
+              <ellipse className={styles.alienEye} cx="-0.6" cy="-1.3" rx="0.4" ry="0.6" />
+              <ellipse className={styles.alienEye} cx="0.6" cy="-1.3" rx="0.4" ry="0.6" />
+              <circle className={styles.rimLightA} cx="-4.6" cy="1.5" r="0.5" />
+              <circle className={styles.rimLightB} cx="0" cy="2.1" r="0.5" />
+              <circle className={styles.rimLightC} cx="4.6" cy="1.5" r="0.5" />
+            </>
+          )}
+        </g>
       </g>
     </g>
   )
