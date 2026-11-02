@@ -1,20 +1,45 @@
-import { BIDIRECTIONAL_THEOREM_COST, computeCostMultiplier } from '../../game/prestige/rules'
-import { bidirectionalSearch } from '../../game/strategies'
+import { useRef, useState } from 'react'
+import { ACHIEVEMENTS } from '../../game/achievements/definitions'
+import {
+  AMPLIFIER_PERCENT_PER_LEVEL,
+  computeDiscoveryRewardPerNode,
+  computeGoalRewardPerNode,
+  computeInsightMultiplier,
+  computeNodesPerSolve,
+  computeRevisitReward,
+  EXPANSION_NODES_PER_LEVEL,
+} from '../../game/currency/rules'
+import { CLARITY_MAX_LEVEL } from '../../game/graph/layout'
+import {
+  BASE_EDGES_PER_SECOND,
+  computeEdgesPerSecond,
+  computeMomentumMultiplier,
+  computeTickIntervalMs,
+  QUICK_STEPS_SPEED_PER_LEVEL,
+} from '../../game/speed/rules'
+import { getStrategy } from '../../game/strategies'
+import { computeEffectiveMemoryLevel, DEEP_MEMORY_PERCENT_PER_LEVEL } from '../../game/strategies/memory'
 import {
   AMPLIFIER_UPGRADE_INFO,
-  CHEAP_PROOFS_UPGRADE_INFO,
+  CLARITY_UPGRADE,
   DEEP_MEMORY_UPGRADE_INFO,
-  DEEPER_ROOTS_UPGRADE_INFO,
   DEFAULT_STRATEGY_ID,
+  DISCOVERY_BONUS_UPGRADE_INFO,
+  EXIT_BONUS_UPGRADE_INFO,
   EXPANSION_UPGRADE_INFO,
-  HEAD_START_UPGRADE_INFO,
+  INSIGHT_MULTIPLIER_UPGRADE_INFO,
+  MINIMAP_UPGRADE,
   MOMENTUM_UPGRADE_INFO,
   NODE_MEMORY_UPGRADE_INFO,
   QUICK_STEPS_UPGRADE_INFO,
+  REVISIT_BONUS_UPGRADE_INFO,
+  SEARCHER_UPGRADE_INFO,
   UPGRADES,
 } from '../../game/upgrades/definitions'
 import { costForLevel, type RepeatableUpgradeInfo } from '../../game/upgrades/scaling'
-import { useProgressionStore } from '../../store/useProgressionStore'
+import { useNow } from '../../hooks/useNow'
+import { useAchievementStore } from '../../store/useAchievementStore'
+import { STARTING_GRAPH_NODE_COUNT, useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
 import styles from './Shop.module.css'
 
@@ -29,215 +54,480 @@ function getNextLockedUpgradeId(purchasedUpgradeIds: string[]): string | undefin
     .find((upgrade) => !purchasedUpgradeIds.includes(upgrade.id))?.id
 }
 
-export function Shop() {
+/** Whether a repeatable's NEXT level is currently affordable and (for the very first level) level-unlocked. */
+function canAffordRepeatable(info: RepeatableUpgradeInfo, level: number, currencyAmount: number, highestLevel: number): boolean {
+  if (level === 0 && highestLevel < info.minLevel) return false
+  return currencyAmount >= costForLevel(info, level)
+}
+
+/** Whether a one-time upgrade (Clarity, Minimap) is currently affordable and level-unlocked, and not already owned. */
+function canAffordOneTime(upgrade: { cost: number; minLevel: number }, owned: boolean, currencyAmount: number, highestLevel: number): boolean {
+  if (owned) return false
+  if (highestLevel < upgrade.minLevel) return false
+  return currencyAmount >= upgrade.cost
+}
+
+const TABS = ['Algorithms', 'Insight', 'Memory', 'Growth', 'Speed', 'Display', 'Level', 'Achievements'] as const
+type Tab = (typeof TABS)[number]
+
+/** How many upgrades are currently purchasable in each tab — drives the "(N)" badge, omitted entirely when N is 0. */
+function usePurchasableCounts(): Partial<Record<Tab, number>> {
   const currency = useProgressionStore((s) => s.currency)
-  const theorems = useProgressionStore((s) => s.theorems)
   const purchasedUpgradeIds = useProgressionStore((s) => s.purchasedUpgradeIds)
-  const activeStrategyId = useProgressionStore((s) => s.activeStrategyId)
-  const bidirectionalUnlocked = useProgressionStore((s) => s.bidirectionalUnlocked)
-  const momentumLevel = useProgressionStore((s) => s.momentumLevel)
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
   const memoryLevel = useProgressionStore((s) => s.memoryLevel)
   const deepMemoryLevel = useProgressionStore((s) => s.deepMemoryLevel)
   const expansionLevel = useProgressionStore((s) => s.expansionLevel)
   const amplifierLevel = useProgressionStore((s) => s.amplifierLevel)
   const quickStepsLevel = useProgressionStore((s) => s.quickStepsLevel)
-  const deeperRootsLevel = useProgressionStore((s) => s.deeperRootsLevel)
-  const cheapProofsLevel = useProgressionStore((s) => s.cheapProofsLevel)
-  const headStartLevel = useProgressionStore((s) => s.headStartLevel)
+  const momentumLevel = useProgressionStore((s) => s.momentumLevel)
+  const searcherLevel = useProgressionStore((s) => s.searcherLevel)
+  const clarityLevel = useProgressionStore((s) => s.clarityLevel)
+  const insightMultiplierLevel = useProgressionStore((s) => s.insightMultiplierLevel)
+  const discoveryBonusLevel = useProgressionStore((s) => s.discoveryBonusLevel)
+  const revisitBonusLevel = useProgressionStore((s) => s.revisitBonusLevel)
+  const exitBonusLevel = useProgressionStore((s) => s.exitBonusLevel)
+
+  const amount = currency.amount
+  const nextLockedUpgradeId = getNextLockedUpgradeId(purchasedUpgradeIds)
+  const nextLockedUpgrade = UPGRADES.find((u) => u.id === nextLockedUpgradeId)
+
+  return {
+    Algorithms: nextLockedUpgrade && canAffordOneTime(nextLockedUpgrade, false, amount, highestGraphNodeCount) ? 1 : 0,
+    Insight:
+      Number(canAffordRepeatable(DISCOVERY_BONUS_UPGRADE_INFO, discoveryBonusLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(REVISIT_BONUS_UPGRADE_INFO, revisitBonusLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(EXIT_BONUS_UPGRADE_INFO, exitBonusLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(INSIGHT_MULTIPLIER_UPGRADE_INFO, insightMultiplierLevel, amount, highestGraphNodeCount)),
+    Memory:
+      Number(canAffordRepeatable(NODE_MEMORY_UPGRADE_INFO, memoryLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(DEEP_MEMORY_UPGRADE_INFO, deepMemoryLevel, amount, highestGraphNodeCount)),
+    Growth:
+      Number(canAffordRepeatable(EXPANSION_UPGRADE_INFO, expansionLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(AMPLIFIER_UPGRADE_INFO, amplifierLevel, amount, highestGraphNodeCount)),
+    Speed:
+      Number(canAffordRepeatable(QUICK_STEPS_UPGRADE_INFO, quickStepsLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(MOMENTUM_UPGRADE_INFO, momentumLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(SEARCHER_UPGRADE_INFO, searcherLevel, amount, highestGraphNodeCount)),
+    Display:
+      Number(canAffordOneTime(CLARITY_UPGRADE, clarityLevel > 0, amount, highestGraphNodeCount)) +
+      Number(canAffordOneTime(MINIMAP_UPGRADE, purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id), amount, highestGraphNodeCount)),
+  }
+}
+
+export function Shop() {
+  const [activeTab, setActiveTab] = useState<Tab>('Algorithms')
+  const unlockedCount = useAchievementStore((s) => s.unlockedIds.length)
+  const purchasableCounts = usePurchasableCounts()
+
+  return (
+    <div className={styles.panel}>
+      <div className={styles.tabBar}>
+        {TABS.map((tab) => {
+          const purchasableCount = purchasableCounts[tab] ?? 0
+          const label =
+            tab === 'Achievements' ? `${tab} (${unlockedCount}/${ACHIEVEMENTS.length})` : purchasableCount > 0 ? `${tab} (${purchasableCount})` : tab
+          return (
+            <button
+              key={tab}
+              type="button"
+              className={[styles.tabButton, tab === activeTab ? styles.tabButtonActive : ''].filter(Boolean).join(' ')}
+              onClick={() => setActiveTab(tab)}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      <div className={styles.tabContent}>
+        {activeTab === 'Level' && <LevelTab />}
+        {activeTab === 'Algorithms' && <AlgorithmsTab />}
+        {activeTab === 'Insight' && <InsightTab />}
+        {activeTab === 'Memory' && <MemoryTab />}
+        {activeTab === 'Growth' && <GrowthTab />}
+        {activeTab === 'Speed' && <SpeedTab />}
+        {activeTab === 'Display' && <DisplayTab />}
+        {activeTab === 'Achievements' && <AchievementsTab />}
+      </div>
+    </div>
+  )
+}
+
+function LevelTab() {
   const graphNodeCount = useProgressionStore((s) => s.graphNodeCount)
-  const unlockedLevels = useProgressionStore((s) => s.unlockedLevels)
-  const purchaseUpgrade = useProgressionStore((s) => s.purchaseUpgrade)
-  const purchaseMomentumLevel = useProgressionStore((s) => s.purchaseMomentumLevel)
-  const purchaseMemoryLevel = useProgressionStore((s) => s.purchaseMemoryLevel)
-  const purchaseDeepMemoryLevel = useProgressionStore((s) => s.purchaseDeepMemoryLevel)
-  const purchaseExpansionLevel = useProgressionStore((s) => s.purchaseExpansionLevel)
-  const purchaseAmplifierLevel = useProgressionStore((s) => s.purchaseAmplifierLevel)
-  const purchaseQuickStepsLevel = useProgressionStore((s) => s.purchaseQuickStepsLevel)
-  const purchaseDeeperRootsLevel = useProgressionStore((s) => s.purchaseDeeperRootsLevel)
-  const purchaseCheapProofsLevel = useProgressionStore((s) => s.purchaseCheapProofsLevel)
-  const purchaseHeadStartLevel = useProgressionStore((s) => s.purchaseHeadStartLevel)
-  const purchaseBidirectional = useProgressionStore((s) => s.purchaseBidirectional)
-  const theoremsAvailable = useProgressionStore((s) => s.theoremsAvailable)
-  const recompile = useProgressionStore((s) => s.recompile)
-  const setActiveStrategy = useProgressionStore((s) => s.setActiveStrategy)
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
   const selectLevel = useProgressionStore((s) => s.selectLevel)
   const resetWithNewGraph = useRunStore((s) => s.resetWithNewGraph)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const nextLockedUpgradeId = getNextLockedUpgradeId(purchasedUpgradeIds)
-  const currentLevelIndex = unlockedLevels.indexOf(graphNodeCount)
-  const costMultiplier = computeCostMultiplier(cheapProofsLevel)
-  const insightCost = (baseCost: number) => Math.round(baseCost * costMultiplier)
-  const pendingTheorems = theoremsAvailable()
-
-  function goToLevel(nodeCount: number) {
-    selectLevel(nodeCount)
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    const parsed = Number(inputRef.current?.value)
+    if (!Number.isInteger(parsed)) return
+    selectLevel(parsed)
     resetWithNewGraph()
   }
 
-  function handleRecompile() {
-    if (recompile()) resetWithNewGraph()
+  return (
+    <div className={styles.shop}>
+      <div className={styles.card}>
+        <div className={styles.name}>Level {graphNodeCount}</div>
+        <div className={styles.description}>
+          The graph's node count is the level. Max reached: {highestGraphNodeCount}. Enter any level from{' '}
+          {STARTING_GRAPH_NODE_COUNT} up to {highestGraphNodeCount} to jump there.
+        </div>
+        {/* Uncontrolled + keyed on graphNodeCount: remounts (and so re-syncs its displayed value) only when the level actually changes elsewhere, without an effect-driven setState. */}
+        <form key={graphNodeCount} className={styles.buttonRow} onSubmit={handleSubmit}>
+          <input
+            ref={inputRef}
+            type="number"
+            className={styles.levelInput}
+            min={STARTING_GRAPH_NODE_COUNT}
+            max={highestGraphNodeCount}
+            defaultValue={graphNodeCount}
+          />
+          <button type="submit" className={styles.buyButton}>
+            Go
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function AlgorithmsTab() {
+  const currency = useProgressionStore((s) => s.currency)
+  const purchasedUpgradeIds = useProgressionStore((s) => s.purchasedUpgradeIds)
+  const activeStrategyId = useProgressionStore((s) => s.activeStrategyId)
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
+  const purchaseUpgrade = useProgressionStore((s) => s.purchaseUpgrade)
+  const setActiveStrategy = useProgressionStore((s) => s.setActiveStrategy)
+
+  const nextLockedUpgradeId = getNextLockedUpgradeId(purchasedUpgradeIds)
+
+  return (
+    <div className={styles.shop}>
+      <UpgradeCard
+        name="Random Walk"
+        description="Picks a random edge every step. No pattern, no memory — the baseline every other upgrade improves on."
+        isActive={activeStrategyId === DEFAULT_STRATEGY_ID}
+        onUse={() => setActiveStrategy(DEFAULT_STRATEGY_ID)}
+      />
+      {UPGRADES.filter((upgrade) => purchasedUpgradeIds.includes(upgrade.id) || upgrade.id === nextLockedUpgradeId).map(
+        (upgrade) => {
+          const owned = purchasedUpgradeIds.includes(upgrade.id)
+          const isActive = activeStrategyId === upgrade.strategyId
+          const affordable = currency.amount >= upgrade.cost
+
+          return (
+            <UpgradeCard
+              key={upgrade.id}
+              name={upgrade.name}
+              description={upgrade.description}
+              isActive={isActive}
+              onUse={owned ? () => setActiveStrategy(upgrade.strategyId as string) : undefined}
+              cost={owned ? undefined : upgrade.cost}
+              canAfford={affordable}
+              onBuy={owned ? undefined : () => purchaseUpgrade(upgrade.id)}
+              minLevel={upgrade.minLevel}
+              highestLevel={highestGraphNodeCount}
+            />
+          )
+        },
+      )}
+    </div>
+  )
+}
+
+function InsightTab() {
+  const currency = useProgressionStore((s) => s.currency)
+  const discoveryBonusLevel = useProgressionStore((s) => s.discoveryBonusLevel)
+  const revisitBonusLevel = useProgressionStore((s) => s.revisitBonusLevel)
+  const exitBonusLevel = useProgressionStore((s) => s.exitBonusLevel)
+  const insightMultiplierLevel = useProgressionStore((s) => s.insightMultiplierLevel)
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
+  const purchaseDiscoveryBonusLevel = useProgressionStore((s) => s.purchaseDiscoveryBonusLevel)
+  const purchaseRevisitBonusLevel = useProgressionStore((s) => s.purchaseRevisitBonusLevel)
+  const purchaseExitBonusLevel = useProgressionStore((s) => s.purchaseExitBonusLevel)
+  const purchaseInsightMultiplierLevel = useProgressionStore((s) => s.purchaseInsightMultiplierLevel)
+
+  const discoveryReward = computeDiscoveryRewardPerNode(discoveryBonusLevel)
+  const revisitReward = computeRevisitReward(revisitBonusLevel)
+  const goalReward = computeGoalRewardPerNode(exitBonusLevel)
+  const multiplier = computeInsightMultiplier(insightMultiplierLevel)
+
+  return (
+    <div className={styles.shop}>
+      <StatCard
+        title="How Insight is earned"
+        lines={[
+          { label: 'Per node discovered', value: `+${discoveryReward.toFixed(2)}` },
+          { label: 'Per revisit', value: `+${revisitReward.toFixed(2)}` },
+          { label: 'Per node, on exit', value: `+${goalReward.toFixed(2)}` },
+          { label: 'Overall multiplier', value: `×${multiplier.toFixed(2)}`, isTotal: true },
+        ]}
+      />
+      <RepeatableUpgradeCard
+        info={DISCOVERY_BONUS_UPGRADE_INFO}
+        level={discoveryBonusLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseDiscoveryBonusLevel}
+      />
+      <RepeatableUpgradeCard
+        info={REVISIT_BONUS_UPGRADE_INFO}
+        level={revisitBonusLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseRevisitBonusLevel}
+      />
+      <RepeatableUpgradeCard
+        info={EXIT_BONUS_UPGRADE_INFO}
+        level={exitBonusLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseExitBonusLevel}
+      />
+      <RepeatableUpgradeCard
+        info={INSIGHT_MULTIPLIER_UPGRADE_INFO}
+        level={insightMultiplierLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseInsightMultiplierLevel}
+      />
+    </div>
+  )
+}
+
+function MemoryTab() {
+  const currency = useProgressionStore((s) => s.currency)
+  const memoryLevel = useProgressionStore((s) => s.memoryLevel)
+  const deepMemoryLevel = useProgressionStore((s) => s.deepMemoryLevel)
+  const activeStrategyId = useProgressionStore((s) => s.activeStrategyId)
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
+  const purchaseMemoryLevel = useProgressionStore((s) => s.purchaseMemoryLevel)
+  const purchaseDeepMemoryLevel = useProgressionStore((s) => s.purchaseDeepMemoryLevel)
+
+  const strategy = getStrategy(activeStrategyId)
+  const deepMultiplier = (1 + DEEP_MEMORY_PERCENT_PER_LEVEL) ** deepMemoryLevel
+  const effectiveMemoryLevel = computeEffectiveMemoryLevel(memoryLevel, deepMemoryLevel, strategy.memoryMultiplier)
+
+  return (
+    <div className={styles.shop}>
+      <StatCard
+        title="Current Memory"
+        lines={[
+          { label: 'Node Memory level', value: `${memoryLevel}` },
+          { label: 'Deep Memory bonus', value: `×${deepMultiplier.toFixed(2)}` },
+          { label: `${strategy.name} multiplier`, value: `×${strategy.memoryMultiplier}` },
+          { label: 'Steps remembered', value: `${effectiveMemoryLevel}`, isTotal: true },
+        ]}
+      />
+      <RepeatableUpgradeCard
+        info={NODE_MEMORY_UPGRADE_INFO}
+        level={memoryLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseMemoryLevel}
+      />
+      <RepeatableUpgradeCard
+        info={DEEP_MEMORY_UPGRADE_INFO}
+        level={deepMemoryLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseDeepMemoryLevel}
+      />
+    </div>
+  )
+}
+
+function GrowthTab() {
+  const currency = useProgressionStore((s) => s.currency)
+  const expansionLevel = useProgressionStore((s) => s.expansionLevel)
+  const amplifierLevel = useProgressionStore((s) => s.amplifierLevel)
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
+  const purchaseExpansionLevel = useProgressionStore((s) => s.purchaseExpansionLevel)
+  const purchaseAmplifierLevel = useProgressionStore((s) => s.purchaseAmplifierLevel)
+
+  const amplifierMultiplier = (1 + AMPLIFIER_PERCENT_PER_LEVEL) ** amplifierLevel
+  const nodesPerSolve = computeNodesPerSolve(expansionLevel, amplifierLevel)
+
+  return (
+    <div className={styles.shop}>
+      <StatCard
+        title="How growth works"
+        lines={[
+          { label: 'Base, per solve', value: '+1 node' },
+          { label: 'Expansion bonus', value: `+${expansionLevel * EXPANSION_NODES_PER_LEVEL} nodes` },
+          { label: 'Amplifier bonus', value: `×${amplifierMultiplier.toFixed(2)}` },
+          { label: 'Nodes per solve', value: `${nodesPerSolve}`, isTotal: true },
+        ]}
+      />
+      <RepeatableUpgradeCard
+        info={EXPANSION_UPGRADE_INFO}
+        level={expansionLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseExpansionLevel}
+      />
+      <RepeatableUpgradeCard
+        info={AMPLIFIER_UPGRADE_INFO}
+        level={amplifierLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseAmplifierLevel}
+      />
+    </div>
+  )
+}
+
+function SpeedTab() {
+  const currency = useProgressionStore((s) => s.currency)
+  const quickStepsLevel = useProgressionStore((s) => s.quickStepsLevel)
+  const momentumLevel = useProgressionStore((s) => s.momentumLevel)
+  const searcherLevel = useProgressionStore((s) => s.searcherLevel)
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
+  const purchaseQuickStepsLevel = useProgressionStore((s) => s.purchaseQuickStepsLevel)
+  const purchaseMomentumLevel = useProgressionStore((s) => s.purchaseMomentumLevel)
+  const purchaseSearcherLevel = useProgressionStore((s) => s.purchaseSearcherLevel)
+  const runStartedAt = useRunStore((s) => s.runStartedAt)
+
+  const now = useNow()
+  const elapsedSecondsThisRun = (now - runStartedAt) / 1000
+  const quickStepsBonus = quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL
+  const momentumMultiplier = computeMomentumMultiplier(momentumLevel, elapsedSecondsThisRun)
+  const edgesPerSecond = computeEdgesPerSecond(computeTickIntervalMs({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun }))
+
+  return (
+    <div className={styles.shop}>
+      <StatCard
+        title="How speed is calculated"
+        lines={[
+          { label: 'Base speed', value: `${BASE_EDGES_PER_SECOND.toFixed(2)} edges/sec` },
+          { label: 'Quick Steps', value: `+${quickStepsBonus.toFixed(2)} edges/sec` },
+          { label: 'Momentum (this run)', value: `×${momentumMultiplier.toFixed(2)}` },
+          { label: 'Current speed', value: `${edgesPerSecond.toFixed(2)} edges/sec`, isTotal: true },
+        ]}
+      />
+      <RepeatableUpgradeCard
+        info={QUICK_STEPS_UPGRADE_INFO}
+        level={quickStepsLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseQuickStepsLevel}
+      />
+      <RepeatableUpgradeCard
+        info={MOMENTUM_UPGRADE_INFO}
+        level={momentumLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseMomentumLevel}
+      />
+      <RepeatableUpgradeCard
+        info={SEARCHER_UPGRADE_INFO}
+        level={searcherLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseSearcherLevel}
+      />
+    </div>
+  )
+}
+
+function DisplayTab() {
+  const currency = useProgressionStore((s) => s.currency)
+  const clarityLevel = useProgressionStore((s) => s.clarityLevel)
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
+  const purchaseClarity = useProgressionStore((s) => s.purchaseClarity)
+  const minimapOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id))
+  const minimapEnabled = useProgressionStore((s) => s.minimapEnabled)
+  const purchaseMinimap = useProgressionStore((s) => s.purchaseMinimap)
+  const toggleMinimap = useProgressionStore((s) => s.toggleMinimap)
+  const clarityOwned = clarityLevel > 0
+
+  function handleBuyClarity() {
+    if (purchaseClarity()) {
+      // Otherwise this one-time purchase wouldn't visibly do anything until the current graph
+      // happened to finish or reset — re-lay it out immediately so it's felt right away.
+      useRunStore.getState().relayoutGraph(CLARITY_MAX_LEVEL)
+    }
   }
 
   return (
-    <div>
-      <h2 className={styles.sectionHeading}>Level</h2>
-      <div className={styles.shop}>
-        <div className={styles.card}>
-          <div className={styles.name}>
-            Level {currentLevelIndex + 1} / {unlockedLevels.length}
+    <div className={styles.shop}>
+      <UpgradeCard
+        name={CLARITY_UPGRADE.name}
+        description={CLARITY_UPGRADE.description}
+        isActive={clarityOwned}
+        onUse={undefined}
+        cost={clarityOwned ? undefined : CLARITY_UPGRADE.cost}
+        canAfford={currency.amount >= CLARITY_UPGRADE.cost}
+        onBuy={clarityOwned ? undefined : handleBuyClarity}
+        minLevel={CLARITY_UPGRADE.minLevel}
+        highestLevel={highestGraphNodeCount}
+      />
+      <UpgradeCard
+        name={MINIMAP_UPGRADE.name}
+        description={MINIMAP_UPGRADE.description}
+        isActive={minimapEnabled}
+        onUse={minimapOwned ? toggleMinimap : undefined}
+        cost={minimapOwned ? undefined : MINIMAP_UPGRADE.cost}
+        canAfford={currency.amount >= MINIMAP_UPGRADE.cost}
+        onBuy={minimapOwned ? undefined : purchaseMinimap}
+        minLevel={MINIMAP_UPGRADE.minLevel}
+        highestLevel={highestGraphNodeCount}
+      />
+    </div>
+  )
+}
+
+function AchievementsTab() {
+  const unlockedIds = useAchievementStore((s) => s.unlockedIds)
+
+  return (
+    <div className={styles.shop}>
+      {ACHIEVEMENTS.map((achievement) => {
+        const unlocked = unlockedIds.includes(achievement.id)
+        return (
+          <div
+            key={achievement.id}
+            className={[styles.card, unlocked ? styles.activeCard : styles.lockedCard].filter(Boolean).join(' ')}
+          >
+            <div className={styles.name}>
+              {unlocked ? '🏆 ' : ''}
+              {achievement.name}
+            </div>
+            {unlocked && <div className={styles.description}>{achievement.description}</div>}
           </div>
-          <div className={styles.description}>
-            {graphNodeCount} nodes. Replay any level you've already unlocked, or jump back to the frontier.
+        )
+      })}
+    </div>
+  )
+}
+
+interface StatLine {
+  label: string
+  value: string
+  isTotal?: boolean
+}
+
+interface StatCardProps {
+  title: string
+  lines: StatLine[]
+}
+
+/** A read-only breakdown of how some current number is actually computed — no buy button, just shows the math. */
+function StatCard({ title, lines }: StatCardProps) {
+  return (
+    <div className={[styles.card, styles.statCard].join(' ')}>
+      <div className={styles.name}>{title}</div>
+      <div className={styles.statLines}>
+        {lines.map((line) => (
+          <div key={line.label} className={[styles.statLine, line.isTotal ? styles.statLineTotal : ''].filter(Boolean).join(' ')}>
+            <span>{line.label}</span>
+            <span>{line.value}</span>
           </div>
-          <div className={styles.buttonRow}>
-            <button
-              type="button"
-              className={styles.buyButton}
-              disabled={currentLevelIndex <= 0}
-              onClick={() => goToLevel(unlockedLevels[currentLevelIndex - 1])}
-            >
-              ◀ Prev
-            </button>
-            <button
-              type="button"
-              className={styles.buyButton}
-              disabled={currentLevelIndex >= unlockedLevels.length - 1}
-              onClick={() => goToLevel(unlockedLevels[currentLevelIndex + 1])}
-            >
-              Next ▶
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <h2 className={styles.sectionHeading}>Algorithms</h2>
-      <div className={styles.shop}>
-        <UpgradeCard
-          name="Random Walk"
-          description="Picks a random edge every step. No pattern, no memory — the baseline every other upgrade improves on."
-          isActive={activeStrategyId === DEFAULT_STRATEGY_ID}
-          onUse={() => setActiveStrategy(DEFAULT_STRATEGY_ID)}
-        />
-        {UPGRADES.filter((upgrade) => purchasedUpgradeIds.includes(upgrade.id) || upgrade.id === nextLockedUpgradeId).map(
-          (upgrade) => {
-            const owned = purchasedUpgradeIds.includes(upgrade.id)
-            const isActive = activeStrategyId === upgrade.strategyId
-            const cost = insightCost(upgrade.cost)
-            const affordable = currency.amount >= cost
-
-            return (
-              <UpgradeCard
-                key={upgrade.id}
-                name={upgrade.name}
-                description={upgrade.description}
-                isActive={isActive}
-                onUse={owned ? () => setActiveStrategy(upgrade.strategyId as string) : undefined}
-                cost={owned ? undefined : cost}
-                canAfford={affordable}
-                onBuy={owned ? undefined : () => purchaseUpgrade(upgrade.id)}
-              />
-            )
-          },
-        )}
-      </div>
-
-      <h2 className={styles.sectionHeading}>Memory</h2>
-      <div className={styles.shop}>
-        <RepeatableUpgradeCard
-          info={NODE_MEMORY_UPGRADE_INFO}
-          level={memoryLevel}
-          currencyAmount={currency.amount}
-          costMultiplier={costMultiplier}
-          onBuy={() => purchaseMemoryLevel()}
-        />
-        <RepeatableUpgradeCard
-          info={DEEP_MEMORY_UPGRADE_INFO}
-          level={deepMemoryLevel}
-          currencyAmount={currency.amount}
-          costMultiplier={costMultiplier}
-          onBuy={() => purchaseDeepMemoryLevel()}
-        />
-      </div>
-
-      <h2 className={styles.sectionHeading}>Growth</h2>
-      <div className={styles.shop}>
-        <RepeatableUpgradeCard
-          info={EXPANSION_UPGRADE_INFO}
-          level={expansionLevel}
-          currencyAmount={currency.amount}
-          costMultiplier={costMultiplier}
-          onBuy={() => purchaseExpansionLevel()}
-        />
-        <RepeatableUpgradeCard
-          info={AMPLIFIER_UPGRADE_INFO}
-          level={amplifierLevel}
-          currencyAmount={currency.amount}
-          costMultiplier={costMultiplier}
-          onBuy={() => purchaseAmplifierLevel()}
-        />
-      </div>
-
-      <h2 className={styles.sectionHeading}>Speed</h2>
-      <div className={styles.shop}>
-        <RepeatableUpgradeCard
-          info={QUICK_STEPS_UPGRADE_INFO}
-          level={quickStepsLevel}
-          currencyAmount={currency.amount}
-          costMultiplier={costMultiplier}
-          onBuy={() => purchaseQuickStepsLevel()}
-        />
-        <RepeatableUpgradeCard
-          info={MOMENTUM_UPGRADE_INFO}
-          level={momentumLevel}
-          currencyAmount={currency.amount}
-          costMultiplier={costMultiplier}
-          onBuy={() => purchaseMomentumLevel()}
-        />
-      </div>
-
-      <h2 className={styles.sectionHeading}>Prestige</h2>
-      <div className={styles.shop}>
-        <div className={[styles.card, styles.prestigeCard].filter(Boolean).join(' ')}>
-          <div className={styles.name}>Recompile — {theorems.amount} Theorems</div>
-          <div className={styles.description}>
-            Wipes the current graph, Insight, and every Insight-side level (Node Memory, Momentum, Expansion…) back to
-            the start. Algorithm unlocks, Theorems, and every upgrade below survive. Recompiling now would earn{' '}
-            <strong>{pendingTheorems}</strong> Theorem{pendingTheorems === 1 ? '' : 's'}.
-          </div>
-          <button type="button" className={styles.buyButton} disabled={pendingTheorems <= 0} onClick={handleRecompile}>
-            {pendingTheorems > 0 ? `Recompile — +${pendingTheorems} Theorems` : 'Explore further first'}
-          </button>
-        </div>
-
-        <UpgradeCard
-          name="Bidirectional Search"
-          description="Two walkers — one from the start, one from the exit — searching toward each other until they meet in the middle. A reward for completing the loop once, not a day-one purchase."
-          isActive={activeStrategyId === bidirectionalSearch.id}
-          onUse={bidirectionalUnlocked ? () => setActiveStrategy(bidirectionalSearch.id) : undefined}
-          cost={bidirectionalUnlocked ? undefined : BIDIRECTIONAL_THEOREM_COST}
-          canAfford={theorems.amount >= BIDIRECTIONAL_THEOREM_COST}
-          onBuy={bidirectionalUnlocked ? undefined : () => purchaseBidirectional()}
-          costUnit="Th"
-        />
-
-        <TheoremUpgradeCard
-          info={DEEPER_ROOTS_UPGRADE_INFO}
-          level={deeperRootsLevel}
-          theoremsAmount={theorems.amount}
-          onBuy={() => purchaseDeeperRootsLevel()}
-        />
-        <TheoremUpgradeCard
-          info={CHEAP_PROOFS_UPGRADE_INFO}
-          level={cheapProofsLevel}
-          theoremsAmount={theorems.amount}
-          onBuy={() => purchaseCheapProofsLevel()}
-        />
-        <TheoremUpgradeCard
-          info={HEAD_START_UPGRADE_INFO}
-          level={headStartLevel}
-          theoremsAmount={theorems.amount}
-          onBuy={() => purchaseHeadStartLevel()}
-        />
+        ))}
       </div>
     </div>
   )
@@ -251,19 +541,28 @@ interface UpgradeCardProps {
   cost?: number
   canAfford?: boolean
   onBuy?: () => void
-  /** Appended after the cost number — e.g. "Th" for Theorem-priced items. Omit for the default (Insight, no suffix). */
-  costUnit?: string
+  /** The level (graph node count) that must have been reached at least once to buy this — absent for Random Walk, which has no cost. */
+  minLevel?: number
+  highestLevel?: number
 }
 
-function UpgradeCard({ name, description, isActive, onUse, cost, canAfford, onBuy, costUnit }: UpgradeCardProps) {
+function UpgradeCard({ name, description, isActive, onUse, cost, canAfford, onBuy, minLevel, highestLevel }: UpgradeCardProps) {
+  const levelLocked = minLevel !== undefined && (highestLevel ?? 0) < minLevel
+
   return (
     <div className={[styles.card, isActive ? styles.activeCard : ''].filter(Boolean).join(' ')}>
       <div className={styles.name}>{name}</div>
       <div className={styles.description}>{description}</div>
       {onBuy ? (
-        <button type="button" className={styles.buyButton} disabled={!canAfford} onClick={onBuy}>
-          {`Buy — ${cost}${costUnit ? ` ${costUnit}` : ''}`}
-        </button>
+        levelLocked ? (
+          <button type="button" className={styles.buyButton} disabled>
+            {`Unlocks at level ${minLevel}`}
+          </button>
+        ) : (
+          <button type="button" className={styles.buyButton} disabled={!canAfford} onClick={onBuy}>
+            {`Buy — ${cost}`}
+          </button>
+        )
       ) : (
         <button type="button" className={styles.buyButton} disabled={isActive} onClick={onUse}>
           {isActive ? 'Active' : 'Use'}
@@ -277,37 +576,14 @@ interface RepeatableUpgradeCardProps {
   info: RepeatableUpgradeInfo
   level: number
   currencyAmount: number
-  costMultiplier: number
+  highestLevel: number
   onBuy: () => void
 }
 
-/** A passive stat with no owned/unowned identity, just a level — cost rises geometrically with each purchase, then Cheap Proofs' flat discount is applied on top. No level cap; the rising cost is what throttles it. */
-function RepeatableUpgradeCard({ info, level, currencyAmount, costMultiplier, onBuy }: RepeatableUpgradeCardProps) {
-  const cost = Math.round(costForLevel(info, level) * costMultiplier)
-
-  return (
-    <div className={styles.card}>
-      <div className={styles.name}>
-        {info.name} (Lv {level})
-      </div>
-      <div className={styles.description}>{info.description}</div>
-      <button type="button" className={styles.buyButton} disabled={currencyAmount < cost} onClick={onBuy}>
-        {`Buy — ${cost}`}
-      </button>
-    </div>
-  )
-}
-
-interface TheoremUpgradeCardProps {
-  info: RepeatableUpgradeInfo
-  level: number
-  theoremsAmount: number
-  onBuy: () => void
-}
-
-/** Same shape as RepeatableUpgradeCard, but priced and paid in Theorems — no Cheap Proofs discount applies here. */
-function TheoremUpgradeCard({ info, level, theoremsAmount, onBuy }: TheoremUpgradeCardProps) {
+/** A passive stat with no owned/unowned identity, just a level — cost rises geometrically with each purchase, uncapped. minLevel only gates the very first purchase; once owned, further levels are cost-gated only. */
+function RepeatableUpgradeCard({ info, level, currencyAmount, highestLevel, onBuy }: RepeatableUpgradeCardProps) {
   const cost = costForLevel(info, level)
+  const levelLocked = level === 0 && highestLevel < info.minLevel
 
   return (
     <div className={styles.card}>
@@ -315,9 +591,15 @@ function TheoremUpgradeCard({ info, level, theoremsAmount, onBuy }: TheoremUpgra
         {info.name} (Lv {level})
       </div>
       <div className={styles.description}>{info.description}</div>
-      <button type="button" className={styles.buyButton} disabled={theoremsAmount < cost} onClick={onBuy}>
-        {`Buy — ${cost} Th`}
-      </button>
+      {levelLocked ? (
+        <button type="button" className={styles.buyButton} disabled>
+          {`Unlocks at level ${info.minLevel}`}
+        </button>
+      ) : (
+        <button type="button" className={styles.buyButton} disabled={currencyAmount < cost} onClick={onBuy}>
+          {`Buy — ${cost}`}
+        </button>
+      )}
     </div>
   )
 }

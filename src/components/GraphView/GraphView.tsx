@@ -1,14 +1,18 @@
 import { useMemo } from 'react'
-import { computeGraphBounds } from '../../game/graph/layout'
+import { computeGraphBounds, computeViewBounds } from '../../game/graph/layout'
 import { edgeId } from '../../game/graph/types'
 import type { NodeId } from '../../game/graph/types'
 import { getStrategy } from '../../game/strategies'
 import type { HighlightKind } from '../../game/strategies'
 import { computeEffectiveMemoryLevel } from '../../game/strategies/memory'
+import { MINIMAP_UPGRADE } from '../../game/upgrades/definitions'
+import type { WalkerState } from '../../game/walker/types'
 import { useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
+import { Minimap } from '../Minimap/Minimap'
 import { WalkerToken } from '../WalkerToken/WalkerToken'
 import styles from './GraphView.module.css'
+import { useSmoothedBounds } from './useSmoothedBounds'
 
 /** Which CSS class visualizes each kind of highlight group — shared across every strategy, since Node Memory now applies to all of them. */
 const HIGHLIGHT_CLASS_BY_KIND: Record<HighlightKind, string> = {
@@ -30,25 +34,50 @@ function hueRotateForNode(nodeId: string): number {
 
 export function GraphView() {
   const graph = useRunStore((s) => s.graph)
-  const walker = useRunStore((s) => s.walker)
+  const walkers = useRunStore((s) => s.walkers)
   const walker2 = useRunStore((s) => s.walker2)
   const discovery = useRunStore((s) => s.discovery)
   const status = useRunStore((s) => s.status)
-  const strategyMemory = useRunStore((s) => s.strategyMemory)
+  const strategyMemories = useRunStore((s) => s.strategyMemories)
+  const sharedRecentPath = useRunStore((s) => s.sharedRecentPath)
   const activeStrategyId = useProgressionStore((s) => s.activeStrategyId)
   const memoryLevel = useProgressionStore((s) => s.memoryLevel)
   const deepMemoryLevel = useProgressionStore((s) => s.deepMemoryLevel)
+  const minimapOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id))
+  const minimapEnabled = useProgressionStore((s) => s.minimapEnabled)
   const effectiveMemoryLevel = computeEffectiveMemoryLevel(
     memoryLevel,
     deepMemoryLevel,
     getStrategy(activeStrategyId).memoryMultiplier,
   )
 
+  // Every token on screen — every active searcher, plus Bidirectional's goal-side partner when present.
+  const allWalkers = useMemo<WalkerState[]>(() => (walker2 ? [...walkers, walker2] : walkers), [walkers, walker2])
+
   const nodesById = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph])
-  // Bounds come from the whole graph (not just discovered nodes) and only
-  // change when the graph itself changes, so the view never rescales as
-  // fog lifts — it just shows more of a frame that was already fixed.
-  const bounds = useMemo(() => computeGraphBounds(graph), [graph])
+
+  // Bounds come from the whole graph (not just discovered nodes), so the view never rescales as
+  // fog lifts — it just shows more of a frame that was already fixed. Below MAX_VIEW_SIZE that
+  // frame is the whole graph, static for its lifetime; past it, node circles would shrink to
+  // near-invisible dots if we kept fitting everything, so the view instead becomes a fixed-size
+  // window that follows the walkers' average position (the only thing that then changes tick to tick).
+  const focus = useMemo(() => {
+    const positions = allWalkers.map((w) => nodesById.get(w.currentNodeId)).filter((p): p is NonNullable<typeof p> => p != null)
+    if (positions.length === 0) return { x: 0, y: 0 }
+    return {
+      x: positions.reduce((sum, p) => sum + (p.x ?? 0), 0) / positions.length,
+      y: positions.reduce((sum, p) => sum + (p.y ?? 0), 0) / positions.length,
+    }
+  }, [allWalkers, nodesById])
+  const targetBounds = useMemo(() => computeViewBounds(graph, focus.x, focus.y), [graph, focus])
+  // Smoothly glides toward targetBounds instead of snapping — targetBounds recenters on the
+  // walkers' average position every tick once windowed, and jumping the viewBox there instantly
+  // read as a jarring teleport rather than the walker simply moving.
+  const bounds = useSmoothedBounds(targetBounds)
+  // The minimap only earns its keep once the main view has actually had to window down to less
+  // than the whole graph — on a graph that already fits, it would just be a smaller duplicate.
+  const fullBounds = useMemo(() => computeGraphBounds(graph), [graph])
+  const isWindowed = fullBounds.width > targetBounds.width + 1 || fullBounds.height > targetBounds.height + 1
 
   const discoveredNodes = useMemo(
     () => graph.nodes.filter((n) => discovery.discoveredNodeIds.has(n.id)),
@@ -59,38 +88,54 @@ export function GraphView() {
     [graph, discovery.discoveredEdgeIds],
   )
 
-  // The edges actually stepped across, not just "both endpoints happen to be visited" — with two
-  // independent walkers sharing one visited set (Bidirectional Search), that looser check lit up
-  // edges neither walker had ever crossed whenever their territories merely touched.
+  // The edges actually stepped across, not just "both endpoints happen to be visited" — with
+  // multiple independent searchers sharing one visited set, that looser check lit up edges none
+  // of them had ever crossed whenever their territories merely touched.
   const traveledEdgeIds = useMemo(() => {
     const ids = new Set<string>()
-    const addPath = (path: NodeId[]) => {
-      for (let i = 0; i < path.length - 1; i++) {
-        ids.add(edgeId(path[i], path[i + 1]))
+    for (const w of allWalkers) {
+      for (let i = 0; i < w.path.length - 1; i++) {
+        ids.add(edgeId(w.path[i], w.path[i + 1]))
       }
     }
-    addPath(walker.path)
-    if (walker2) addPath(walker2.path)
     return ids
-  }, [walker.path, walker2])
+  }, [allWalkers])
 
-  // A node can only belong to one highlight kind at a time in practice (memory-filtered
-  // candidates exclude remembered nodes before scoring), but groups are applied in array
-  // order regardless, so a later group's class wins if a strategy ever returns an overlap.
+  const currentNodeIds = useMemo(() => new Set(allWalkers.map((w) => w.currentNodeId)), [allWalkers])
+
+  // Strategy visualization reflects the first searcher's view of the shared pool — with memory
+  // shared across searchers, that pooled window (and discovery/DFS stack) is representative of
+  // the whole group, not just one walker's private state.
   const highlightClassByNodeId = useMemo(() => {
+    const primary = walkers[0]
+    if (!primary) return new Map<NodeId, string>()
     const strategy = getStrategy(activeStrategyId)
+    const syntheticWalker: WalkerState = { ...primary, path: [...sharedRecentPath, primary.currentNodeId] }
     const groups =
-      strategy.getHighlightedNodes?.({ graph, discovery, walker, memory: strategyMemory, memoryLevel: effectiveMemoryLevel }) ?? []
+      strategy.getHighlightedNodes?.({
+        graph,
+        discovery,
+        walker: syntheticWalker,
+        memory: strategyMemories[0],
+        memoryLevel: effectiveMemoryLevel,
+      }) ?? []
     const map = new Map<NodeId, string>()
     for (const group of groups) {
       const className = HIGHLIGHT_CLASS_BY_KIND[group.kind]
       for (const nodeId of group.nodeIds) map.set(nodeId, className)
     }
     return map
-  }, [activeStrategyId, graph, discovery, walker, strategyMemory, effectiveMemoryLevel])
+  }, [activeStrategyId, graph, discovery, walkers, sharedRecentPath, strategyMemories, effectiveMemoryLevel])
 
-  const walkerPosition = nodesById.get(walker.currentNodeId)
-  const walker2Position = walker2 ? nodesById.get(walker2.currentNodeId) : undefined
+  const walkerPositions = useMemo(
+    () =>
+      allWalkers
+        .map((w) => nodesById.get(w.currentNodeId))
+        .filter((p): p is NonNullable<typeof p> => p != null)
+        .map((p) => ({ x: p.x ?? 0, y: p.y ?? 0 })),
+    [allWalkers, nodesById],
+  )
+
   const isCelebrating = status === 'celebrating'
 
   return (
@@ -122,7 +167,7 @@ export function GraphView() {
         <g>
           {discoveredNodes.map((node) => {
             const isHighlighted = highlightClassByNodeId.has(node.id)
-            const isCurrent = node.id === walker.currentNodeId || node.id === walker2?.currentNodeId
+            const isCurrent = currentNodeIds.has(node.id)
             const isPlainVisited = discovery.visitedNodeIds.has(node.id) && !node.isGoal && !node.isStart && !isCurrent && !isHighlighted
 
             return (
@@ -146,17 +191,32 @@ export function GraphView() {
             )
           })}
         </g>
-        {walkerPosition && <WalkerToken x={walkerPosition.x ?? 0} y={walkerPosition.y ?? 0} />}
-        {walker2Position && <WalkerToken x={walker2Position.x ?? 0} y={walker2Position.y ?? 0} variant="reverse" />}
-        {isCelebrating && walkerPosition && (
-          <g>
-            <circle cx={walkerPosition.x} cy={walkerPosition.y} className={styles.burstRing} style={{ animationDelay: '0ms' }} />
-            <circle cx={walkerPosition.x} cy={walkerPosition.y} className={styles.burstRing} style={{ animationDelay: '180ms' }} />
-            <circle cx={walkerPosition.x} cy={walkerPosition.y} className={styles.burstRing} style={{ animationDelay: '360ms' }} />
-          </g>
-        )}
+        {walkers.map((w, i) => {
+          const position = nodesById.get(w.currentNodeId)
+          return position ? <WalkerToken key={`w-${i}`} x={position.x ?? 0} y={position.y ?? 0} /> : null
+        })}
+        {walker2 &&
+          (() => {
+            const position = nodesById.get(walker2.currentNodeId)
+            return position ? <WalkerToken x={position.x ?? 0} y={position.y ?? 0} variant="reverse" /> : null
+          })()}
+        {isCelebrating &&
+          allWalkers.map((w, i) => {
+            const position = nodesById.get(w.currentNodeId)
+            if (!position) return null
+            return (
+              <g key={`burst-${i}`}>
+                <circle cx={position.x} cy={position.y} className={styles.burstRing} style={{ animationDelay: '0ms' }} />
+                <circle cx={position.x} cy={position.y} className={styles.burstRing} style={{ animationDelay: '180ms' }} />
+                <circle cx={position.x} cy={position.y} className={styles.burstRing} style={{ animationDelay: '360ms' }} />
+              </g>
+            )
+          })}
       </svg>
       {isCelebrating && <div className={styles.banner}>Exit found!</div>}
+      {isWindowed && minimapOwned && minimapEnabled && (
+        <Minimap graph={graph} discoveredNodeIds={discovery.discoveredNodeIds} walkerPositions={walkerPositions} viewport={bounds} />
+      )}
     </div>
   )
 }

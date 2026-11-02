@@ -47,10 +47,47 @@ describe('filterByMemory', () => {
     expect(filterByMemory(['a', 'c'], ctx)).toEqual(['c'])
   })
 
-  it('when every candidate is remembered, narrows to the single oldest (least recently visited) one', () => {
-    const ctx = ctxWithPath(['start', 'x', 'y', 'start'], 3) // remembers start, x, y
+  it('when every candidate is remembered and there is no discovered frontier anywhere, falls back to the oldest (least recently visited) one', () => {
+    const ctx = ctxWithPath(['start', 'x', 'y', 'start'], 3) // remembers start, x, y; empty graph/discovery — no frontier exists
     // 'x' was last visited at index 1, 'y' at index 2 — 'x' is older.
     expect(filterByMemory(['x', 'y'], ctx)).toEqual(['x'])
+  })
+
+  it('when every candidate is remembered but a frontier exists, prefers whichever is closer to it over whichever was visited longer ago', () => {
+    // hub -- near -- bridge -- frontier (discovered, unvisited)
+    // hub -- far -- deadend
+    const adjacency = {
+      hub: ['near', 'far'],
+      near: ['hub', 'bridge'],
+      bridge: ['near', 'frontier'],
+      frontier: ['bridge'],
+      far: ['hub', 'deadend'],
+      deadend: ['far'],
+    }
+    const graph = {
+      nodes: Object.keys(adjacency).map((id) => ({ id, isStart: id === 'hub', isGoal: false })),
+      edges: [],
+      startNodeId: 'hub',
+      goalNodeId: 'none',
+      adjacency,
+    }
+    const discovery = {
+      discoveredNodeIds: new Set(['hub', 'near', 'bridge', 'frontier', 'far', 'deadend']),
+      discoveredEdgeIds: new Set<string>(),
+      visitedNodeIds: new Set(['hub', 'near', 'bridge', 'far', 'deadend']), // everything but frontier
+    }
+    const ctx: StrategyContext = {
+      graph,
+      discovery,
+      // path's last 2 entries before 'hub' are 'far' then 'near', so memoryLevel 2 remembers both.
+      // 'far' was visited longer ago (index 0 vs near's index 1) — the old recency-only rule would
+      // pick it — but 'near' (2 hops from frontier, vs far's 4) is the one that leads back out.
+      walker: { currentNodeId: 'hub', previousNodeId: 'near', path: ['far', 'near', 'hub'], stepsTaken: 2, hasReachedGoal: false },
+      memory: undefined,
+      memoryLevel: 2,
+    }
+
+    expect(filterByMemory(['near', 'far'], ctx)).toEqual(['near'])
   })
 })
 

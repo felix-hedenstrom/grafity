@@ -1,3 +1,48 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-bg);
+  height: 70vh;
+  max-height: 600px;
+  overflow: hidden;
+}
+
+.tabBar {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tabButton {
+  font: inherit;
+  font-size: 13px;
+  flex: 1 1 auto;
+  padding: 8px 6px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tabButton:hover {
+  color: var(--text-h);
+}
+
+.tabButtonActive {
+  color: var(--text-h);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tabContent {
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
 .sectionHeading {
   font-size: 16px;
   font-weight: 600;
@@ -8,19 +53,18 @@
 
 .shop {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 16px 0;
-  justify-content: center;
+  padding: 16px;
 }
 
 .card {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 16px;
-  max-width: 260px;
   text-align: left;
-  background: var(--code-bg);
+  background: var(--bg);
 }
 
 .activeCard {
@@ -28,8 +72,23 @@
   box-shadow: 0 0 0 1px var(--accent-border);
 }
 
-.prestigeCard {
-  max-width: 320px;
+/** A not-yet-unlocked achievement — still readable, just visibly muted next to unlocked ones. */
+.lockedCard {
+  opacity: 0.55;
+}
+
+.lockedCard .name {
+  color: var(--text);
+}
+
+.levelInput {
+  font: inherit;
+  width: 90px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
 }
 
 .name {
@@ -42,6 +101,34 @@
   font-size: 13px;
   color: var(--text);
   margin-bottom: 10px;
+}
+
+/** A stat breakdown card (how a number is currently computed) — no buy button, just a label/value table. */
+.statCard {
+  border-style: dashed;
+}
+
+.statLines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-family: var(--mono);
+}
+
+.statLine {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+}
+
+.statLineTotal {
+  color: var(--text-h);
+  font-weight: 600;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+  margin-top: 2px;
 }
 
 .buttonRow {

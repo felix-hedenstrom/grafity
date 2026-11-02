@@ -1,0 +1,26 @@
+.layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.graphColumn {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shopColumn {
+  flex: 0 0 320px;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .shopColumn {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+}

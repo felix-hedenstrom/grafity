@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { DISCOVERY_REWARD_PER_NODE, GOAL_REWARD_PER_NODE, REVISIT_REWARD } from '../../game/currency/rules'
 import {
   computeEdgesPerSecond,
@@ -6,6 +5,7 @@ import {
   computeTickIntervalMs,
   QUICK_STEPS_SPEED_PER_LEVEL,
 } from '../../game/speed/rules'
+import { useNow } from '../../hooks/useNow'
 import { useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
 import styles from './Hud.module.css'
@@ -14,18 +14,13 @@ export function Hud() {
   const currency = useProgressionStore((s) => s.currency)
   const quickStepsLevel = useProgressionStore((s) => s.quickStepsLevel)
   const momentumLevel = useProgressionStore((s) => s.momentumLevel)
-  const stepsTaken = useRunStore((s) => s.walker.stepsTaken)
+  const stepsTaken = useRunStore((s) => s.walkers.reduce((sum, w) => sum + w.stepsTaken, 0))
   const runStartedAt = useRunStore((s) => s.runStartedAt)
   const discoveredCount = useRunStore((s) => s.discovery.discoveredNodeIds.size)
   const totalNodes = useRunStore((s) => s.graph.nodes.length)
 
-  // Momentum's display needs to tick forward with real time even between game ticks —
-  // Date.now() belongs in an effect, not render, so this is the one place it's read.
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 250)
-    return () => clearInterval(id)
-  }, [])
+  // Momentum's display needs to tick forward with real time even between game ticks.
+  const now = useNow()
 
   const elapsedSecondsThisRun = (now - runStartedAt) / 1000
   const edgesPerSecond = computeEdgesPerSecond(

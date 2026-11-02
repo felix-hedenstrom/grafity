@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import styles from './App.module.css'
+import { AchievementToast } from './components/AchievementToast/AchievementToast'
 import { ResetButton } from './components/Controls/ResetButton'
 import { GraphView } from './components/GraphView/GraphView'
 import { Hud } from './components/Hud/Hud'
@@ -15,9 +17,16 @@ function App() {
     <main>
       <h1>Grafity</h1>
       <Hud />
-      <GraphView />
-      <Shop />
+      <div className={styles.layout}>
+        <div className={styles.graphColumn}>
+          <GraphView />
+        </div>
+        <div className={styles.shopColumn}>
+          <Shop />
+        </div>
+      </div>
       <ResetButton />
+      <AchievementToast />
     </main>
   )
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAchievementStore } from '../../store/useAchievementStore'
 import { useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
 import styles from './ResetButton.module.css'
@@ -9,6 +10,7 @@ const ARM_TIMEOUT_MS = 3000
 export function ResetButton() {
   const [armed, setArmed] = useState(false)
   const resetProgress = useProgressionStore((s) => s.resetProgress)
+  const resetAchievements = useAchievementStore((s) => s.resetAchievements)
 
   useEffect(() => {
     if (!armed) return
@@ -23,6 +25,7 @@ export function ResetButton() {
     }
     resetProgress()
     useRunStore.getState().resetWithNewGraph()
+    resetAchievements()
     setArmed(false)
   }
 

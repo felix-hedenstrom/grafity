@@ -55,3 +55,43 @@ describe('computeLayoutForces', () => {
     expect(higher.collideRadius).toBeGreaterThan(base.collideRadius)
   })
 })
+
+describe('computeViewBounds', () => {
+  it('matches the full graph bounds when the graph is small enough to fit', () => {
+    const graph = layoutGraph(generateGraph(8, mulberry32(5)))
+    const full = computeGraphBounds(graph)
+    const view = computeViewBounds(graph, 0, 0, 900)
+    expect(view).toEqual(full)
+  })
+
+  it('caps each dimension at maxSize and centers on the focus point once the graph outgrows it', () => {
+    // A long chain lays out much wider than tall — exercise independent-axis capping.
+    const adjacency: Record<string, string[]> = {}
+    const nodes = Array.from({ length: 40 }, (_, i) => `n${i}`)
+    for (let i = 0; i < nodes.length; i++) {
+      adjacency[nodes[i]] = [nodes[i - 1], nodes[i + 1]].filter((id): id is string => id !== undefined)
+    }
+    const graph = layoutGraph({
+      nodes: nodes.map((id, i) => ({ id, isStart: i === 0, isGoal: i === nodes.length - 1, x: i * 100, y: 0 })),
+      edges: nodes.slice(0, -1).map((id, i) => ({ id: `${id}--${nodes[i + 1]}`, source: id, target: nodes[i + 1], weight: 1 })),
+      startNodeId: nodes[0],
+      goalNodeId: nodes[nodes.length - 1],
+      adjacency,
+    })
+
+    const view = computeViewBounds(graph, 500, 0, 200)
+    expect(view.width).toBe(200)
+    expect(view.minX).toBeCloseTo(400, 0) // centered on focusX=500 within a 200-wide window
+  })
+
+  it('clamps the window so it never drifts past the graph\'s actual extent', () => {
+    const graph = layoutGraph(generateGraph(30, mulberry32(6)))
+    const full = computeGraphBounds(graph)
+    // Focus way outside the graph entirely — the window should still land fully inside full bounds.
+    const view = computeViewBounds(graph, full.minX - 10_000, full.minY - 10_000, 100)
+    expect(view.minX).toBeGreaterThanOrEqual(full.minX)
+    expect(view.minY).toBeGreaterThanOrEqual(full.minY)
+    expect(view.minX + view.width).toBeLessThanOrEqual(full.minX + full.width + 0.001)
+    expect(view.minY + view.height).toBeLessThanOrEqual(full.minY + full.height + 0.001)
+  })
+})

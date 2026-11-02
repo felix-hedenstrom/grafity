@@ -1,0 +1,45 @@
+.panel {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 150px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.svg {
+  display: block;
+}
+
+.dot {
+  fill: var(--text);
+  opacity: 0.45;
+}
+
+.goalDot {
+  fill: var(--accent);
+  opacity: 0.8;
+}
+
+.walkerDot {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 2px var(--accent-border));
+}
+
+.viewportBox {
+  fill: var(--accent-bg);
+  stroke: var(--accent);
+  stroke-width: 1;
+  rx: 2;
+}

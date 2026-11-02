@@ -2,25 +2,22 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { computeNodesPerSolve, createCurrency, earn, spend } from '../game/currency/rules'
 import type { CurrencyState } from '../game/currency/types'
-import {
-  BIDIRECTIONAL_THEOREM_COST,
-  computeCostMultiplier,
-  computeHeadStartInsight,
-  computeStartingGraphNodeCount,
-  computeTheoremsOnRecompile,
-} from '../game/prestige/rules'
-import { bidirectionalSearch } from '../game/strategies'
+import { CLARITY_MAX_LEVEL } from '../game/graph/layout'
 import {
   AMPLIFIER_UPGRADE_INFO,
-  CHEAP_PROOFS_UPGRADE_INFO,
+  CLARITY_UPGRADE,
   DEEP_MEMORY_UPGRADE_INFO,
-  DEEPER_ROOTS_UPGRADE_INFO,
   DEFAULT_STRATEGY_ID,
+  DISCOVERY_BONUS_UPGRADE_INFO,
+  EXIT_BONUS_UPGRADE_INFO,
   EXPANSION_UPGRADE_INFO,
-  HEAD_START_UPGRADE_INFO,
+  INSIGHT_MULTIPLIER_UPGRADE_INFO,
+  MINIMAP_UPGRADE,
   MOMENTUM_UPGRADE_INFO,
   NODE_MEMORY_UPGRADE_INFO,
   QUICK_STEPS_UPGRADE_INFO,
+  REVISIT_BONUS_UPGRADE_INFO,
+  SEARCHER_UPGRADE_INFO,
   UPGRADES,
 } from '../game/upgrades/definitions'
 import { costForLevel } from '../game/upgrades/scaling'
@@ -29,24 +26,26 @@ export const STARTING_GRAPH_NODE_COUNT = 7
 
 interface ProgressionState {
   currency: CurrencyState
-  /** Earned by Recompiling — spent only on permanent meta-upgrades and Bidirectional Search, never on the regular Insight shop. */
-  theorems: CurrencyState
   purchasedUpgradeIds: string[]
   activeStrategyId: string
-  bidirectionalUnlocked: boolean
-  /** Node count of the level currently being played — may be any size in unlockedLevels, not just the frontier. */
+  /** The level currently being played — this IS the graph's node count, not a separate index. */
   graphNodeCount: number
-  /** Every level (graph size) ever unlocked, ascending, oldest first — index 0 is the current starting size, the last entry is the frontier. */
-  unlockedLevels: number[]
+  /** The largest graphNodeCount ever reached — bounds how high selectLevel can jump to. */
+  highestGraphNodeCount: number
   momentumLevel: number
   memoryLevel: number
   expansionLevel: number
   amplifierLevel: number
   deepMemoryLevel: number
   quickStepsLevel: number
-  deeperRootsLevel: number
-  cheapProofsLevel: number
-  headStartLevel: number
+  searcherLevel: number
+  clarityLevel: number
+  insightMultiplierLevel: number
+  discoveryBonusLevel: number
+  revisitBonusLevel: number
+  exitBonusLevel: number
+  /** Whether the minimap is currently shown — only meaningful once 'minimap' is in purchasedUpgradeIds; toggled freely afterward, no re-purchase needed. */
+  minimapEnabled: boolean
   earnCurrency: (amount: number) => void
   purchaseUpgrade: (upgradeId: string) => boolean
   purchaseMomentumLevel: () => boolean
@@ -55,65 +54,63 @@ interface ProgressionState {
   purchaseAmplifierLevel: () => boolean
   purchaseDeepMemoryLevel: () => boolean
   purchaseQuickStepsLevel: () => boolean
-  purchaseDeeperRootsLevel: () => boolean
-  purchaseCheapProofsLevel: () => boolean
-  purchaseHeadStartLevel: () => boolean
-  purchaseBidirectional: () => boolean
+  purchaseSearcherLevel: () => boolean
+  purchaseInsightMultiplierLevel: () => boolean
+  purchaseDiscoveryBonusLevel: () => boolean
+  purchaseRevisitBonusLevel: () => boolean
+  purchaseExitBonusLevel: () => boolean
+  purchaseClarity: () => boolean
+  purchaseMinimap: () => boolean
+  toggleMinimap: () => void
   setActiveStrategy: (strategyId: string) => void
-  /** Switches the currently played level to any size already in unlockedLevels — a no-op if nodeCount was never unlocked. */
+  /** Jumps the current level to any size from STARTING_GRAPH_NODE_COUNT up to highestGraphNodeCount — a no-op outside that range. Solving from a lower level climbs back up normally and will eventually pass the old high again. */
   selectLevel: (nodeCount: number) => void
   growGraph: () => void
-  /** How many Theorems recompiling right now would grant — 0 means the button is disabled. */
-  theoremsAvailable: () => number
-  /** The strategic partial reset: keeps algorithm unlocks, Theorems, and every Theorem meta-upgrade; wipes the current run and every Insight-side tunable level. */
-  recompile: () => boolean
   resetProgress: () => void
 }
 
-function isOwnedStrategy(strategyId: string, purchasedUpgradeIds: string[], bidirectionalUnlocked: boolean): boolean {
+function isOwnedStrategy(strategyId: string, purchasedUpgradeIds: string[]): boolean {
   if (strategyId === DEFAULT_STRATEGY_ID) return true
-  if (strategyId === bidirectionalSearch.id) return bidirectionalUnlocked
   return UPGRADES.some((upgrade) => upgrade.strategyId === strategyId && purchasedUpgradeIds.includes(upgrade.id))
 }
 
 export const useProgressionStore = create<ProgressionState>()(
   persist(
     (set, get) => ({
-      currency: earn(createCurrency(), computeHeadStartInsight(0)),
-      theorems: createCurrency(),
+      currency: createCurrency(),
       purchasedUpgradeIds: [],
       activeStrategyId: DEFAULT_STRATEGY_ID,
-      bidirectionalUnlocked: false,
       graphNodeCount: STARTING_GRAPH_NODE_COUNT,
-      unlockedLevels: [STARTING_GRAPH_NODE_COUNT],
+      highestGraphNodeCount: STARTING_GRAPH_NODE_COUNT,
       momentumLevel: 0,
       memoryLevel: 0,
       expansionLevel: 0,
       amplifierLevel: 0,
       deepMemoryLevel: 0,
       quickStepsLevel: 0,
-      deeperRootsLevel: 0,
-      cheapProofsLevel: 0,
-      headStartLevel: 0,
+      searcherLevel: 0,
+      clarityLevel: 0,
+      insightMultiplierLevel: 0,
+      discoveryBonusLevel: 0,
+      revisitBonusLevel: 0,
+      exitBonusLevel: 0,
+      minimapEnabled: true,
 
       earnCurrency: (amount) => set((state) => ({ currency: earn(state.currency, amount) })),
 
       growGraph: () =>
         set((state) => {
-          const frontier = state.unlockedLevels[state.unlockedLevels.length - 1]
-          // Replaying an already-unlocked level doesn't push the frontier further out.
-          if (state.graphNodeCount !== frontier) return {}
-
-          const nextSize = frontier + computeNodesPerSolve(state.expansionLevel, state.amplifierLevel)
+          const nextSize = state.graphNodeCount + computeNodesPerSolve(state.expansionLevel, state.amplifierLevel)
           return {
-            unlockedLevels: [...state.unlockedLevels, nextSize],
             graphNodeCount: nextSize,
+            highestGraphNodeCount: Math.max(state.highestGraphNodeCount, nextSize),
           }
         }),
 
       selectLevel: (nodeCount) => {
         const state = get()
-        if (!state.unlockedLevels.includes(nodeCount)) return
+        if (!Number.isInteger(nodeCount)) return
+        if (nodeCount < STARTING_GRAPH_NODE_COUNT || nodeCount > state.highestGraphNodeCount) return
         set({ graphNodeCount: nodeCount })
       },
 
@@ -122,19 +119,17 @@ export const useProgressionStore = create<ProgressionState>()(
         if (state.purchasedUpgradeIds.includes(upgradeId)) return false
 
         const upgrade = UPGRADES.find((candidate) => candidate.id === upgradeId)
-        if (!upgrade) return false
-        const cost = Math.round(upgrade.cost * computeCostMultiplier(state.cheapProofsLevel))
-        if (state.currency.amount < cost) return false
+        if (!upgrade || state.currency.amount < upgrade.cost || state.highestGraphNodeCount < upgrade.minLevel) return false
 
         // Auto-switch to it only on a player's very first STRATEGY upgrade — a later
         // strategy purchase shouldn't silently yank them off one they already chose.
-        const ownedStrategyCount =
-          state.purchasedUpgradeIds.filter((id) => UPGRADES.some((candidate) => candidate.id === id)).length +
-          (state.bidirectionalUnlocked ? 1 : 0)
+        const ownedStrategyCount = state.purchasedUpgradeIds.filter((id) =>
+          UPGRADES.some((candidate) => candidate.id === id),
+        ).length
         const shouldAutoActivate = ownedStrategyCount === 0
 
         set({
-          currency: spend(state.currency, cost),
+          currency: spend(state.currency, upgrade.cost),
           purchasedUpgradeIds: [...state.purchasedUpgradeIds, upgrade.id],
           activeStrategyId: shouldAutoActivate ? (upgrade.strategyId as string) : state.activeStrategyId,
         })
@@ -143,7 +138,8 @@ export const useProgressionStore = create<ProgressionState>()(
 
       purchaseMomentumLevel: () => {
         const state = get()
-        const cost = Math.round(costForLevel(MOMENTUM_UPGRADE_INFO, state.momentumLevel) * computeCostMultiplier(state.cheapProofsLevel))
+        if (state.momentumLevel === 0 && state.highestGraphNodeCount < MOMENTUM_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(MOMENTUM_UPGRADE_INFO, state.momentumLevel)
         if (state.currency.amount < cost) return false
 
         set({ currency: spend(state.currency, cost), momentumLevel: state.momentumLevel + 1 })
@@ -152,7 +148,8 @@ export const useProgressionStore = create<ProgressionState>()(
 
       purchaseMemoryLevel: () => {
         const state = get()
-        const cost = Math.round(costForLevel(NODE_MEMORY_UPGRADE_INFO, state.memoryLevel) * computeCostMultiplier(state.cheapProofsLevel))
+        if (state.memoryLevel === 0 && state.highestGraphNodeCount < NODE_MEMORY_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(NODE_MEMORY_UPGRADE_INFO, state.memoryLevel)
         if (state.currency.amount < cost) return false
 
         set({ currency: spend(state.currency, cost), memoryLevel: state.memoryLevel + 1 })
@@ -161,7 +158,8 @@ export const useProgressionStore = create<ProgressionState>()(
 
       purchaseExpansionLevel: () => {
         const state = get()
-        const cost = Math.round(costForLevel(EXPANSION_UPGRADE_INFO, state.expansionLevel) * computeCostMultiplier(state.cheapProofsLevel))
+        if (state.expansionLevel === 0 && state.highestGraphNodeCount < EXPANSION_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(EXPANSION_UPGRADE_INFO, state.expansionLevel)
         if (state.currency.amount < cost) return false
 
         set({ currency: spend(state.currency, cost), expansionLevel: state.expansionLevel + 1 })
@@ -170,7 +168,8 @@ export const useProgressionStore = create<ProgressionState>()(
 
       purchaseAmplifierLevel: () => {
         const state = get()
-        const cost = Math.round(costForLevel(AMPLIFIER_UPGRADE_INFO, state.amplifierLevel) * computeCostMultiplier(state.cheapProofsLevel))
+        if (state.amplifierLevel === 0 && state.highestGraphNodeCount < AMPLIFIER_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(AMPLIFIER_UPGRADE_INFO, state.amplifierLevel)
         if (state.currency.amount < cost) return false
 
         set({ currency: spend(state.currency, cost), amplifierLevel: state.amplifierLevel + 1 })
@@ -179,7 +178,8 @@ export const useProgressionStore = create<ProgressionState>()(
 
       purchaseDeepMemoryLevel: () => {
         const state = get()
-        const cost = Math.round(costForLevel(DEEP_MEMORY_UPGRADE_INFO, state.deepMemoryLevel) * computeCostMultiplier(state.cheapProofsLevel))
+        if (state.deepMemoryLevel === 0 && state.highestGraphNodeCount < DEEP_MEMORY_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(DEEP_MEMORY_UPGRADE_INFO, state.deepMemoryLevel)
         if (state.currency.amount < cost) return false
 
         set({ currency: spend(state.currency, cost), deepMemoryLevel: state.deepMemoryLevel + 1 })
@@ -188,115 +188,113 @@ export const useProgressionStore = create<ProgressionState>()(
 
       purchaseQuickStepsLevel: () => {
         const state = get()
-        const cost = Math.round(costForLevel(QUICK_STEPS_UPGRADE_INFO, state.quickStepsLevel) * computeCostMultiplier(state.cheapProofsLevel))
+        if (state.quickStepsLevel === 0 && state.highestGraphNodeCount < QUICK_STEPS_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(QUICK_STEPS_UPGRADE_INFO, state.quickStepsLevel)
         if (state.currency.amount < cost) return false
 
         set({ currency: spend(state.currency, cost), quickStepsLevel: state.quickStepsLevel + 1 })
         return true
       },
 
-      // The three meta-upgrades below are priced and paid in Theorems — Cheap Proofs' Insight discount doesn't apply to them.
-
-      purchaseDeeperRootsLevel: () => {
+      purchaseSearcherLevel: () => {
         const state = get()
-        const cost = costForLevel(DEEPER_ROOTS_UPGRADE_INFO, state.deeperRootsLevel)
-        if (state.theorems.amount < cost) return false
+        if (state.searcherLevel === 0 && state.highestGraphNodeCount < SEARCHER_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(SEARCHER_UPGRADE_INFO, state.searcherLevel)
+        if (state.currency.amount < cost) return false
 
-        set({ theorems: spend(state.theorems, cost), deeperRootsLevel: state.deeperRootsLevel + 1 })
+        set({ currency: spend(state.currency, cost), searcherLevel: state.searcherLevel + 1 })
         return true
       },
 
-      purchaseCheapProofsLevel: () => {
+      purchaseInsightMultiplierLevel: () => {
         const state = get()
-        const cost = costForLevel(CHEAP_PROOFS_UPGRADE_INFO, state.cheapProofsLevel)
-        if (state.theorems.amount < cost) return false
+        if (state.insightMultiplierLevel === 0 && state.highestGraphNodeCount < INSIGHT_MULTIPLIER_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(INSIGHT_MULTIPLIER_UPGRADE_INFO, state.insightMultiplierLevel)
+        if (state.currency.amount < cost) return false
 
-        set({ theorems: spend(state.theorems, cost), cheapProofsLevel: state.cheapProofsLevel + 1 })
+        set({ currency: spend(state.currency, cost), insightMultiplierLevel: state.insightMultiplierLevel + 1 })
         return true
       },
 
-      purchaseHeadStartLevel: () => {
+      purchaseDiscoveryBonusLevel: () => {
         const state = get()
-        const cost = costForLevel(HEAD_START_UPGRADE_INFO, state.headStartLevel)
-        if (state.theorems.amount < cost) return false
+        if (state.discoveryBonusLevel === 0 && state.highestGraphNodeCount < DISCOVERY_BONUS_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(DISCOVERY_BONUS_UPGRADE_INFO, state.discoveryBonusLevel)
+        if (state.currency.amount < cost) return false
 
-        set({ theorems: spend(state.theorems, cost), headStartLevel: state.headStartLevel + 1 })
+        set({ currency: spend(state.currency, cost), discoveryBonusLevel: state.discoveryBonusLevel + 1 })
         return true
       },
 
-      purchaseBidirectional: () => {
+      purchaseRevisitBonusLevel: () => {
         const state = get()
-        if (state.bidirectionalUnlocked) return false
-        if (state.theorems.amount < BIDIRECTIONAL_THEOREM_COST) return false
+        if (state.revisitBonusLevel === 0 && state.highestGraphNodeCount < REVISIT_BONUS_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(REVISIT_BONUS_UPGRADE_INFO, state.revisitBonusLevel)
+        if (state.currency.amount < cost) return false
 
-        const ownedStrategyCount = state.purchasedUpgradeIds.filter((id) =>
-          UPGRADES.some((candidate) => candidate.id === id),
-        ).length
-        const shouldAutoActivate = ownedStrategyCount === 0
+        set({ currency: spend(state.currency, cost), revisitBonusLevel: state.revisitBonusLevel + 1 })
+        return true
+      },
+
+      purchaseExitBonusLevel: () => {
+        const state = get()
+        if (state.exitBonusLevel === 0 && state.highestGraphNodeCount < EXIT_BONUS_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(EXIT_BONUS_UPGRADE_INFO, state.exitBonusLevel)
+        if (state.currency.amount < cost) return false
+
+        set({ currency: spend(state.currency, cost), exitBonusLevel: state.exitBonusLevel + 1 })
+        return true
+      },
+
+      purchaseClarity: () => {
+        const state = get()
+        if (state.clarityLevel > 0) return false
+        if (state.currency.amount < CLARITY_UPGRADE.cost || state.highestGraphNodeCount < CLARITY_UPGRADE.minLevel) return false
+
+        set({ currency: spend(state.currency, CLARITY_UPGRADE.cost), clarityLevel: CLARITY_MAX_LEVEL })
+        return true
+      },
+
+      purchaseMinimap: () => {
+        const state = get()
+        if (state.purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id)) return false
+        if (state.currency.amount < MINIMAP_UPGRADE.cost || state.highestGraphNodeCount < MINIMAP_UPGRADE.minLevel) return false
 
         set({
-          theorems: spend(state.theorems, BIDIRECTIONAL_THEOREM_COST),
-          bidirectionalUnlocked: true,
-          activeStrategyId: shouldAutoActivate ? bidirectionalSearch.id : state.activeStrategyId,
+          currency: spend(state.currency, MINIMAP_UPGRADE.cost),
+          purchasedUpgradeIds: [...state.purchasedUpgradeIds, MINIMAP_UPGRADE.id],
         })
         return true
       },
+
+      toggleMinimap: () => set((state) => ({ minimapEnabled: !state.minimapEnabled })),
 
       setActiveStrategy: (strategyId) => {
         const state = get()
-        if (!isOwnedStrategy(strategyId, state.purchasedUpgradeIds, state.bidirectionalUnlocked)) return
+        if (!isOwnedStrategy(strategyId, state.purchasedUpgradeIds)) return
         set({ activeStrategyId: strategyId })
-      },
-
-      theoremsAvailable: () => {
-        const state = get()
-        const frontier = state.unlockedLevels[state.unlockedLevels.length - 1]
-        const baseStart = computeStartingGraphNodeCount(STARTING_GRAPH_NODE_COUNT, state.deeperRootsLevel)
-        return computeTheoremsOnRecompile(frontier, baseStart)
-      },
-
-      recompile: () => {
-        const state = get()
-        const earned = get().theoremsAvailable()
-        if (earned <= 0) return false
-
-        const startingGraphNodeCount = computeStartingGraphNodeCount(STARTING_GRAPH_NODE_COUNT, state.deeperRootsLevel)
-
-        set({
-          theorems: earn(state.theorems, earned),
-          currency: earn(createCurrency(), computeHeadStartInsight(state.headStartLevel)),
-          graphNodeCount: startingGraphNodeCount,
-          unlockedLevels: [startingGraphNodeCount],
-          momentumLevel: 0,
-          memoryLevel: 0,
-          expansionLevel: 0,
-          amplifierLevel: 0,
-          deepMemoryLevel: 0,
-          quickStepsLevel: 0,
-          // purchasedUpgradeIds, activeStrategyId, bidirectionalUnlocked, and every
-          // Theorem-side meta-upgrade level deliberately survive a Recompile.
-        })
-        return true
       },
 
       resetProgress: () =>
         set({
-          currency: earn(createCurrency(), computeHeadStartInsight(0)),
-          theorems: createCurrency(),
+          currency: createCurrency(),
           purchasedUpgradeIds: [],
           activeStrategyId: DEFAULT_STRATEGY_ID,
-          bidirectionalUnlocked: false,
           graphNodeCount: STARTING_GRAPH_NODE_COUNT,
-          unlockedLevels: [STARTING_GRAPH_NODE_COUNT],
+          highestGraphNodeCount: STARTING_GRAPH_NODE_COUNT,
           momentumLevel: 0,
           memoryLevel: 0,
           expansionLevel: 0,
           amplifierLevel: 0,
           deepMemoryLevel: 0,
           quickStepsLevel: 0,
-          deeperRootsLevel: 0,
-          cheapProofsLevel: 0,
-          headStartLevel: 0,
+          searcherLevel: 0,
+          clarityLevel: 0,
+          insightMultiplierLevel: 0,
+          discoveryBonusLevel: 0,
+          revisitBonusLevel: 0,
+          exitBonusLevel: 0,
+          minimapEnabled: true,
         }),
     }),
     {

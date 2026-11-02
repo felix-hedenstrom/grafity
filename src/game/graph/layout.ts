@@ -5,9 +5,9 @@ import type { Graph, NodeId } from './types'
 export const LAYOUT_WIDTH = 800
 export const LAYOUT_HEIGHT = 600
 
-/** Clarity is repeatable — each purchase spreads nodes farther apart and pushes them harder away from each other, untangling what would otherwise become a dense hairball as graphs grow. */
-export const CLARITY_BASE_COST = 300
-export const CLARITY_COST_GROWTH = 1.4
+/** Clarity is a one-time, on/off upgrade — buying it jumps straight to CLARITY_MAX_LEVEL, spreading nodes farther apart and untangling what would otherwise become a dense hairball as graphs grow. */
+export const CLARITY_COST = 1500
+export const CLARITY_MAX_LEVEL = 20
 
 const BASE_CHARGE_STRENGTH = -150
 const BASE_LINK_DISTANCE = 70

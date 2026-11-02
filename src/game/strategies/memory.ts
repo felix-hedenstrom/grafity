@@ -45,17 +45,72 @@ function oldestCandidate(candidates: NodeId[], path: NodeId[]): NodeId {
 }
 
 /**
+ * Hop-distance from every discovered node to the nearest discovered-but-unvisited node (the
+ * "frontier"), via one multi-source BFS seeded from every frontier node at once — so looking up
+ * any candidate's distance afterward is a single map read rather than its own search. Nodes with
+ * no discovered path to any frontier node (or when there's no frontier left at all) are absent.
+ */
+function computeFrontierDistances(ctx: StrategyContext): Map<NodeId, number> {
+  const { graph, discovery } = ctx
+  const distances = new Map<NodeId, number>()
+  const queue: NodeId[] = []
+  for (const id of discovery.discoveredNodeIds) {
+    if (discovery.visitedNodeIds.has(id)) continue
+    distances.set(id, 0)
+    queue.push(id)
+  }
+
+  let head = 0
+  while (head < queue.length) {
+    const current = queue[head++]
+    const currentDistance = distances.get(current) as number
+    for (const neighbor of graph.adjacency[current] ?? []) {
+      if (!discovery.discoveredNodeIds.has(neighbor) || distances.has(neighbor)) continue
+      distances.set(neighbor, currentDistance + 1)
+      queue.push(neighbor)
+    }
+  }
+  return distances
+}
+
+/**
+ * Of a forced set of candidates (all remembered), the one closest to the discovery frontier —
+ * recency avoidance alone has no sense of direction, and could easily steer a walker away from
+ * the one corridor leading back to unexplored territory just because it was "recently visited."
+ * Ties (including "no frontier reachable from any candidate," e.g. a fully-discovered graph) fall
+ * back to the oldest-visited candidate, same as before this existed.
+ */
+function bestForcedCandidate(candidates: NodeId[], ctx: StrategyContext): NodeId {
+  const frontierDistances = computeFrontierDistances(ctx)
+  if (frontierDistances.size === 0) return oldestCandidate(candidates, ctx.walker.path)
+
+  let best = candidates[0]
+  let bestDistance = frontierDistances.get(best) ?? Infinity
+  let bestVisitIndex = ctx.walker.path.lastIndexOf(best)
+  for (const candidate of candidates.slice(1)) {
+    const distance = frontierDistances.get(candidate) ?? Infinity
+    const visitIndex = ctx.walker.path.lastIndexOf(candidate)
+    if (distance < bestDistance || (distance === bestDistance && visitIndex < bestVisitIndex)) {
+      best = candidate
+      bestDistance = distance
+      bestVisitIndex = visitIndex
+    }
+  }
+  return best
+}
+
+/**
  * Filters out candidates the walker currently remembers. Every strategy that picks among graph
  * neighbors should run its candidates through this, so Node Memory applies uniformly. If every
- * candidate is remembered — forced to revisit — narrows to just the single oldest (least
- * recently visited) one instead of picking uniformly among all of them, so a forced revisit
- * prefers the node most likely to have changed since last seen.
+ * candidate is remembered — forced to revisit — narrows to just the single candidate closest to
+ * the discovery frontier instead of picking uniformly among all of them, so a forced revisit
+ * still drifts back toward unexplored territory rather than wandering the explored pocket.
  */
 export function filterByMemory(candidates: NodeId[], ctx: StrategyContext): NodeId[] {
   const remembered = rememberedNodes(ctx.walker.path, ctx.memoryLevel)
   const novel = candidates.filter((id) => !remembered.has(id))
   if (novel.length > 0) return novel
-  return [oldestCandidate(candidates, ctx.walker.path)]
+  return [bestForcedCandidate(candidates, ctx)]
 }
 
 /** Truncates a DFS-style stack to the last memoryLevel entries, in place — the walker can't backtrack past what it still remembers. */
