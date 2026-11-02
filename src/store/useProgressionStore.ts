@@ -8,6 +8,7 @@ import {
   CLARITY_UPGRADE,
   DEEP_MEMORY_UPGRADE_INFO,
   DEFAULT_STRATEGY_ID,
+  DISCOVER_WAIT_UPGRADE_INFO,
   DISCOVERY_BONUS_UPGRADE_INFO,
   EXIT_BONUS_UPGRADE_INFO,
   EXPANSION_UPGRADE_INFO,
@@ -38,6 +39,7 @@ interface ProgressionState {
   amplifierLevel: number
   deepMemoryLevel: number
   quickStepsLevel: number
+  discoverWaitLevel: number
   searcherLevel: number
   clarityLevel: number
   insightMultiplierLevel: number
@@ -54,6 +56,7 @@ interface ProgressionState {
   purchaseAmplifierLevel: () => boolean
   purchaseDeepMemoryLevel: () => boolean
   purchaseQuickStepsLevel: () => boolean
+  purchaseDiscoverWaitLevel: () => boolean
   purchaseSearcherLevel: () => boolean
   purchaseInsightMultiplierLevel: () => boolean
   purchaseDiscoveryBonusLevel: () => boolean
@@ -88,6 +91,7 @@ export const useProgressionStore = create<ProgressionState>()(
       amplifierLevel: 0,
       deepMemoryLevel: 0,
       quickStepsLevel: 0,
+      discoverWaitLevel: 0,
       searcherLevel: 0,
       clarityLevel: 0,
       insightMultiplierLevel: 0,
@@ -196,6 +200,16 @@ export const useProgressionStore = create<ProgressionState>()(
         return true
       },
 
+      purchaseDiscoverWaitLevel: () => {
+        const state = get()
+        if (state.discoverWaitLevel === 0 && state.highestGraphNodeCount < DISCOVER_WAIT_UPGRADE_INFO.minLevel) return false
+        const cost = costForLevel(DISCOVER_WAIT_UPGRADE_INFO, state.discoverWaitLevel)
+        if (state.currency.amount < cost) return false
+
+        set({ currency: spend(state.currency, cost), discoverWaitLevel: state.discoverWaitLevel + 1 })
+        return true
+      },
+
       purchaseSearcherLevel: () => {
         const state = get()
         if (state.searcherLevel === 0 && state.highestGraphNodeCount < SEARCHER_UPGRADE_INFO.minLevel) return false
@@ -288,6 +302,7 @@ export const useProgressionStore = create<ProgressionState>()(
           amplifierLevel: 0,
           deepMemoryLevel: 0,
           quickStepsLevel: 0,
+          discoverWaitLevel: 0,
           searcherLevel: 0,
           clarityLevel: 0,
           insightMultiplierLevel: 0,

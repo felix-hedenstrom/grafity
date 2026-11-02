@@ -138,7 +138,7 @@ export function actualWeight(edgeWeight: number): number {
   return edgeWeight
 }
 
-/** Straight-line distance between two nodes' laid-out positions — a gameplay heuristic for A*, not a formally admissible one (pixel distance and edge weight are different units), but it reliably biases the search toward the goal. */
+/** Straight-line distance between two nodes' laid-out positions — a gameplay heuristic for A*, not a formally admissible one (edge weight is reshaped by percentile rank, not kept as literal pixel distance, so it can diverge from real geometry), but it reliably biases the search toward the goal. */
 export function straightLineDistance(a: NodeId, b: NodeId, nodesById: Map<NodeId, { x?: number; y?: number }>): number {
   const nodeA = nodesById.get(a)
   const nodeB = nodesById.get(b)

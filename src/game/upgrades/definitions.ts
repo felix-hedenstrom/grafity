@@ -19,6 +19,9 @@ import {
 } from '../currency/rules'
 import { CLARITY_COST } from '../graph/generatePlanar'
 import {
+  DISCOVER_WAIT_BASE_COST,
+  DISCOVER_WAIT_COST_GROWTH,
+  DISCOVER_WAIT_PERCENT_PER_LEVEL,
   MOMENTUM_BASE_COST,
   MOMENTUM_COST_GROWTH,
   MOMENTUM_MAX_MULTIPLIER,
@@ -127,6 +130,17 @@ export const MOMENTUM_UPGRADE_INFO: RepeatableUpgradeInfo = {
   baseCost: MOMENTUM_BASE_COST,
   costGrowth: MOMENTUM_COST_GROWTH,
   minLevel: 8,
+}
+
+const discoverWaitPercentPerLevel = DISCOVER_WAIT_PERCENT_PER_LEVEL * 100
+
+/** Quick Study is repeatable — each purchase shrinks how long a walker pauses the first time it visits a node by another 5%, compounding, uncapped. Revisits are always instant, unaffected by this. */
+export const DISCOVER_WAIT_UPGRADE_INFO: RepeatableUpgradeInfo = {
+  name: 'Quick Study',
+  description: `-${discoverWaitPercentPerLevel}% time spent pausing at a newly discovered node per purchase, compounding.`,
+  baseCost: DISCOVER_WAIT_BASE_COST,
+  costGrowth: DISCOVER_WAIT_COST_GROWTH,
+  minLevel: 10,
 }
 
 /**

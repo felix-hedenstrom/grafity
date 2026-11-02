@@ -109,15 +109,24 @@ describe('generatePlanarGraph', () => {
     expect(() => generatePlanarGraph(0)).toThrow()
   })
 
-  it('assigns each edge a weight in range, and not all the same', () => {
-    const graph = generatePlanarGraph(40, mulberry32(5))
-    const weights = graph.edges.map((e) => e.weight)
+  it('assigns edge weights with roughly a 20x spread between shortest and longest, but keeps most edges clustered near the median', () => {
+    const graph = generatePlanarGraph(120, mulberry32(5))
+    const weights = graph.edges.map((e) => e.weight).sort((a, b) => a - b)
     for (const w of weights) {
       expect(w).toBeGreaterThanOrEqual(1)
-      expect(w).toBeLessThanOrEqual(9)
       expect(Number.isInteger(w)).toBe(true)
     }
-    expect(new Set(weights).size).toBeGreaterThan(1)
+
+    const min = weights[0]
+    const max = weights[weights.length - 1]
+    expect(max / min).toBeGreaterThan(10)
+    expect(max / min).toBeLessThan(30)
+
+    // The middle 80% (10th-90th percentile) should span a much narrower ratio than the
+    // full population — i.e. the 20x extremes are rare, not typical.
+    const p10 = weights[Math.floor(weights.length * 0.1)]
+    const p90 = weights[Math.floor(weights.length * 0.9)]
+    expect(p90 / p10).toBeLessThan(8)
   })
 
   it('spreads nodes farther apart when Clarity is enabled, without changing the node count', () => {

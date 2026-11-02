@@ -10,10 +10,10 @@ import {
   EXPANSION_NODES_PER_LEVEL,
 } from '../../game/currency/rules'
 import {
-  BASE_EDGES_PER_SECOND,
-  computeEdgesPerSecond,
+  BASE_DISTANCE_PER_SECOND,
+  computeDiscoverWaitMs,
+  computeDistancePerSecond,
   computeMomentumMultiplier,
-  computeTickIntervalMs,
   QUICK_STEPS_SPEED_PER_LEVEL,
 } from '../../game/speed/rules'
 import { getStrategy } from '../../game/strategies'
@@ -23,6 +23,7 @@ import {
   CLARITY_UPGRADE,
   DEEP_MEMORY_UPGRADE_INFO,
   DEFAULT_STRATEGY_ID,
+  DISCOVER_WAIT_UPGRADE_INFO,
   DISCOVERY_BONUS_UPGRADE_INFO,
   EXIT_BONUS_UPGRADE_INFO,
   EXPANSION_UPGRADE_INFO,
@@ -79,6 +80,7 @@ function usePurchasableCounts(): Partial<Record<Tab, number>> {
   const expansionLevel = useProgressionStore((s) => s.expansionLevel)
   const amplifierLevel = useProgressionStore((s) => s.amplifierLevel)
   const quickStepsLevel = useProgressionStore((s) => s.quickStepsLevel)
+  const discoverWaitLevel = useProgressionStore((s) => s.discoverWaitLevel)
   const momentumLevel = useProgressionStore((s) => s.momentumLevel)
   const searcherLevel = useProgressionStore((s) => s.searcherLevel)
   const clarityLevel = useProgressionStore((s) => s.clarityLevel)
@@ -106,6 +108,7 @@ function usePurchasableCounts(): Partial<Record<Tab, number>> {
       Number(canAffordRepeatable(AMPLIFIER_UPGRADE_INFO, amplifierLevel, amount, highestGraphNodeCount)),
     Speed:
       Number(canAffordRepeatable(QUICK_STEPS_UPGRADE_INFO, quickStepsLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(DISCOVER_WAIT_UPGRADE_INFO, discoverWaitLevel, amount, highestGraphNodeCount)) +
       Number(canAffordRepeatable(MOMENTUM_UPGRADE_INFO, momentumLevel, amount, highestGraphNodeCount)) +
       Number(canAffordRepeatable(SEARCHER_UPGRADE_INFO, searcherLevel, amount, highestGraphNodeCount)),
     Display:
@@ -383,10 +386,12 @@ function GrowthTab() {
 function SpeedTab() {
   const currency = useProgressionStore((s) => s.currency)
   const quickStepsLevel = useProgressionStore((s) => s.quickStepsLevel)
+  const discoverWaitLevel = useProgressionStore((s) => s.discoverWaitLevel)
   const momentumLevel = useProgressionStore((s) => s.momentumLevel)
   const searcherLevel = useProgressionStore((s) => s.searcherLevel)
   const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
   const purchaseQuickStepsLevel = useProgressionStore((s) => s.purchaseQuickStepsLevel)
+  const purchaseDiscoverWaitLevel = useProgressionStore((s) => s.purchaseDiscoverWaitLevel)
   const purchaseMomentumLevel = useProgressionStore((s) => s.purchaseMomentumLevel)
   const purchaseSearcherLevel = useProgressionStore((s) => s.purchaseSearcherLevel)
   const runStartedAt = useRunStore((s) => s.runStartedAt)
@@ -395,17 +400,19 @@ function SpeedTab() {
   const elapsedSecondsThisRun = (now - runStartedAt) / 1000
   const quickStepsBonus = quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL
   const momentumMultiplier = computeMomentumMultiplier(momentumLevel, elapsedSecondsThisRun)
-  const edgesPerSecond = computeEdgesPerSecond(computeTickIntervalMs({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun }))
+  const distancePerSecond = computeDistancePerSecond({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun })
+  const discoverWaitMs = computeDiscoverWaitMs(discoverWaitLevel)
 
   return (
     <div className={styles.shop}>
       <StatCard
         title="How speed is calculated"
         lines={[
-          { label: 'Base speed', value: `${BASE_EDGES_PER_SECOND.toFixed(2)} edges/sec` },
-          { label: 'Quick Steps', value: `+${quickStepsBonus.toFixed(2)} edges/sec` },
+          { label: 'Base speed', value: `${BASE_DISTANCE_PER_SECOND.toFixed(1)} distance/sec` },
+          { label: 'Quick Steps', value: `+${quickStepsBonus.toFixed(1)} distance/sec` },
           { label: 'Momentum (this run)', value: `×${momentumMultiplier.toFixed(2)}` },
-          { label: 'Current speed', value: `${edgesPerSecond.toFixed(2)} edges/sec`, isTotal: true },
+          { label: 'Current speed', value: `${distancePerSecond.toFixed(1)} distance/sec`, isTotal: true },
+          { label: 'Discover wait', value: `${Math.round(discoverWaitMs)}ms`, isTotal: true },
         ]}
       />
       <RepeatableUpgradeCard
@@ -414,6 +421,13 @@ function SpeedTab() {
         currencyAmount={currency.amount}
         highestLevel={highestGraphNodeCount}
         onBuy={purchaseQuickStepsLevel}
+      />
+      <RepeatableUpgradeCard
+        info={DISCOVER_WAIT_UPGRADE_INFO}
+        level={discoverWaitLevel}
+        currencyAmount={currency.amount}
+        highestLevel={highestGraphNodeCount}
+        onBuy={purchaseDiscoverWaitLevel}
       />
       <RepeatableUpgradeCard
         info={MOMENTUM_UPGRADE_INFO}
