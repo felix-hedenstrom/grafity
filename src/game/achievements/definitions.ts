@@ -80,7 +80,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'clarity-of-mind',
     name: 'Clarity of Mind',
-    description: '10 levels of Clarity — the graph practically untangles itself now.',
+    description: 'Unlocked Clarity — the graph practically untangles itself now.',
     check: (ctx) => ctx.clarityLevel >= 10,
   },
   {

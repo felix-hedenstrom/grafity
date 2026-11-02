@@ -1,4 +1,3 @@
-import { DISCOVERY_REWARD_PER_NODE, GOAL_REWARD_PER_NODE, REVISIT_REWARD } from '../../game/currency/rules'
 import {
   computeEdgesPerSecond,
   computeMomentumMultiplier,
@@ -26,8 +25,6 @@ export function Hud() {
   const edgesPerSecond = computeEdgesPerSecond(
     computeTickIntervalMs({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun }),
   )
-  const exitReward = totalNodes * GOAL_REWARD_PER_NODE
-
   const quickStepsBonus = quickStepsLevel * QUICK_STEPS_SPEED_PER_LEVEL
   const momentumPercent = Math.round((computeMomentumMultiplier(momentumLevel, elapsedSecondsThisRun) - 1) * 100)
 
@@ -47,14 +44,6 @@ export function Hud() {
       <div className={styles.box}>
         <div className={styles.boxHeading}>Insight</div>
         <div className={styles.boxValue}>{currency.amount}</div>
-        <div className={styles.boxBreakdown}>
-          <div>
-            +{DISCOVERY_REWARD_PER_NODE} / discovery, +{REVISIT_REWARD} / revisit
-          </div>
-          <div>
-            +{exitReward} / exit ({GOAL_REWARD_PER_NODE} × {totalNodes} nodes)
-          </div>
-        </div>
       </div>
 
       <div className={styles.box}>

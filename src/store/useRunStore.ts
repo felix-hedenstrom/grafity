@@ -155,8 +155,12 @@ export const useRunStore = create<RunState>((set, get) => ({
 
     if (strategyChanged) {
       // Starting this strategy fresh — every searcher gets its own new memory, and the shared
-      // pool resets since it belonged to whatever strategy was active before.
-      walkers = Array.from({ length: desiredSearcherCount }, () => createWalker(runState.graph.startNodeId))
+      // pool resets since it belonged to whatever strategy was active before. The walkers
+      // themselves stay where they physically are on the graph; only their memory is new.
+      walkers = Array.from(
+        { length: desiredSearcherCount },
+        (_, i) => createWalker(walkers[i]?.currentNodeId ?? runState.graph.startNodeId),
+      )
       strategyMemories = walkers.map(() => strategy.createMemory?.())
       sharedRecentPath = []
     } else if (walkers.length < desiredSearcherCount) {
