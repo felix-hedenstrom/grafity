@@ -133,7 +133,9 @@ describe('useProgressionStore', () => {
       expect(useProgressionStore.getState()[levelField]).toBe(0)
     })
 
-    it('refuses the first purchase below its level requirement, even with enough currency', () => {
+    // Node Memory is intentionally ungated (minLevel: 0) so it's purchasable right from the
+    // start of a fresh run — this case has nothing to assert for it.
+    it.skipIf(info.minLevel <= STARTING_GRAPH_NODE_COUNT)('refuses the first purchase below its level requirement, even with enough currency', () => {
       expect(info.minLevel).toBeGreaterThan(STARTING_GRAPH_NODE_COUNT) // premise: this upgrade is actually gated
       useProgressionStore.setState({
         currency: earn(createCurrency(), costForLevel(info, 0)),
@@ -156,6 +158,19 @@ describe('useProgressionStore', () => {
       useProgressionStore.setState({ highestGraphNodeCount: STARTING_GRAPH_NODE_COUNT })
       expect(useProgressionStore.getState()[actionName]()).toBe(true)
       expect(useProgressionStore.getState()[levelField]).toBe(2)
+    })
+  })
+
+  describe('purchaseMemoryLevel', () => {
+    it('is purchasable at the very start of a fresh run, with no level grind required', () => {
+      expect(NODE_MEMORY_UPGRADE_INFO.minLevel).toBeLessThanOrEqual(STARTING_GRAPH_NODE_COUNT)
+      useProgressionStore.setState({
+        currency: earn(createCurrency(), costForLevel(NODE_MEMORY_UPGRADE_INFO, 0)),
+        highestGraphNodeCount: STARTING_GRAPH_NODE_COUNT,
+      })
+
+      expect(useProgressionStore.getState().purchaseMemoryLevel()).toBe(true)
+      expect(useProgressionStore.getState().memoryLevel).toBe(1)
     })
   })
 

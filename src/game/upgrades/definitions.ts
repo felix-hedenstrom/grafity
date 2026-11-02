@@ -171,7 +171,7 @@ export const NODE_MEMORY_UPGRADE_INFO: RepeatableUpgradeInfo = {
   description: '+1 remembered step per purchase, avoiding revisits.',
   baseCost: NODE_MEMORY_BASE_COST,
   costGrowth: NODE_MEMORY_COST_GROWTH,
-  minLevel: 12,
+  minLevel: 0,
 }
 
 const deepMemoryPercent = Math.round(DEEP_MEMORY_PERCENT_PER_LEVEL * 100)
