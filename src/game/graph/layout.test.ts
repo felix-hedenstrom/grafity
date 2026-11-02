@@ -14,7 +14,18 @@ function graphWithPositions(positions: { id: string; x: number; y: number }[]): 
 }
 
 describe('computeViewBounds', () => {
-  it('matches the full graph bounds when the graph is small enough to fit', () => {
+  it('matches the full graph bounds when the graph already fills at least MIN_VIEW_SIZE', () => {
+    const graph = graphWithPositions([
+      { id: 'a', x: 0, y: 0 },
+      { id: 'b', x: 600, y: 300 },
+      { id: 'c', x: 300, y: 600 },
+    ])
+    const full = computeGraphBounds(graph)
+    const view = computeViewBounds(graph, 0, 0, 900)
+    expect(view).toEqual(full)
+  })
+
+  it('pads a graph smaller than MIN_VIEW_SIZE out to MIN_VIEW_SIZE, centered on the graph', () => {
     const graph = graphWithPositions([
       { id: 'a', x: 0, y: 0 },
       { id: 'b', x: 100, y: 50 },
@@ -22,7 +33,12 @@ describe('computeViewBounds', () => {
     ])
     const full = computeGraphBounds(graph)
     const view = computeViewBounds(graph, 0, 0, 900)
-    expect(view).toEqual(full)
+    expect(view.width).toBe(MIN_VIEW_SIZE)
+    expect(view.height).toBe(MIN_VIEW_SIZE)
+    const graphCenterX = full.minX + full.width / 2
+    const graphCenterY = full.minY + full.height / 2
+    expect(view.minX).toBeCloseTo(graphCenterX - MIN_VIEW_SIZE / 2, 5)
+    expect(view.minY).toBeCloseTo(graphCenterY - MIN_VIEW_SIZE / 2, 5)
   })
 
   it('caps each dimension at maxSize and centers on the focus point once the graph outgrows it', () => {

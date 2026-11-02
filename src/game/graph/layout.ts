@@ -62,14 +62,17 @@ export function computeDynamicViewSize(mainPos: { x: number; y: number }, otherP
 export function computeViewBounds(graph: Graph, focusX: number, focusY: number, maxSize = MAX_VIEW_SIZE): GraphBounds {
   const full = computeGraphBounds(graph)
 
-  const width = Math.min(full.width, maxSize)
-  const height = Math.min(full.height, maxSize)
+  const width = Math.min(Math.max(full.width, MIN_VIEW_SIZE), maxSize)
+  const height = Math.min(Math.max(full.height, MIN_VIEW_SIZE), maxSize)
 
-  const rawMinX = full.width <= maxSize ? full.minX : focusX - width / 2
-  const rawMinY = full.height <= maxSize ? full.minY : focusY - height / 2
+  // Three cases: the graph is small enough to pad out to MIN_VIEW_SIZE (center on the graph
+  // itself, so it gets even breathing room on all sides), it fits within maxSize as-is (use its
+  // own bounds directly), or it's bigger than maxSize (window centered on the focus/walker).
+  const rawMinX = width > full.width ? full.minX + full.width / 2 - width / 2 : full.width <= maxSize ? full.minX : focusX - width / 2
+  const rawMinY = height > full.height ? full.minY + full.height / 2 - height / 2 : full.height <= maxSize ? full.minY : focusY - height / 2
 
-  const minX = Math.min(Math.max(rawMinX, full.minX), full.minX + full.width - width)
-  const minY = Math.min(Math.max(rawMinY, full.minY), full.minY + full.height - height)
+  const minX = width <= full.width ? Math.min(Math.max(rawMinX, full.minX), full.minX + full.width - width) : rawMinX
+  const minY = height <= full.height ? Math.min(Math.max(rawMinY, full.minY), full.minY + full.height - height) : rawMinY
 
   return { minX, minY, width, height }
 }
