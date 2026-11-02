@@ -6,7 +6,9 @@ import type { StrategyContext, TraversalStrategy } from './types'
 /** Among neighbors the walker hasn't exceeded its memory on, the ones tied for opening up the most undiscovered territory. */
 function pickBestNeighbors(ctx: StrategyContext): NodeId[] {
   const { graph, discovery, walker } = ctx
-  const neighbors = filterByMemory(graph.adjacency[walker.currentNodeId], ctx)
+  const allNeighbors = graph.adjacency[walker.currentNodeId]
+  const filtered = filterByMemory(allNeighbors, ctx)
+  const neighbors = filtered.length > 0 ? filtered : allNeighbors
 
   let bestScore = -1
   let bestNeighbors: NodeId[] = []

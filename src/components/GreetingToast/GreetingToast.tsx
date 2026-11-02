@@ -139,7 +139,7 @@ function DiscoveryDemo() {
   const walkerAngle = traveling && next ? headingAngle(current, next) : prev ? headingAngle(prev, current) : 0
 
   return (
-    <svg className={graphStyles.graph} style={{ height: 110 }} viewBox="0 0 240 80" role="img" aria-label="Animation of a walker discovering nodes along a graph">
+    <svg className={graphStyles.graph} style={{ height: 110 }} viewBox="0 0 240 80" role="img" aria-label="Animation of a Spaceship discovering nodes along a graph">
       <defs>
         <polygon id="greeting-star-sparkle" points="10,0 2.1,2.1 0,10 -2.1,2.1 -10,0 -2.1,-2.1 0,-10 2.1,-2.1" />
         <polygon

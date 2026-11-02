@@ -63,6 +63,7 @@ beforeEach(() => {
     exitBonusLevel: 0,
     insightMultiplierLevel: 0,
     minimapEnabled: true,
+    mutexEnabled: false,
   })
   useRunStore.getState().resetWithNewGraph()
 })
@@ -211,6 +212,67 @@ describe('walkerScheduler', () => {
       vi.advanceTimersByTime(500)
 
       expect(useRunStore.getState().walkers).toHaveLength(1) // no new searchers spawned mid-redirect
+    })
+  })
+
+  describe('Traffic Control (mutex)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    /** hub connects to both 'a' and 'b' — randomWalk mocked to always take the first adjacency entry ('a'). */
+    function buildHubGraph(): Graph {
+      return {
+        nodes: [
+          { id: 'hub', isStart: true, isGoal: false, x: 0, y: 0 },
+          { id: 'a', isStart: false, isGoal: false, x: 10, y: 0 },
+          { id: 'b', isStart: false, isGoal: false, x: 0, y: 10 },
+        ],
+        edges: [
+          { id: 'a--hub', source: 'hub', target: 'a' },
+          { id: 'b--hub', source: 'hub', target: 'b' },
+        ],
+        startNodeId: 'hub',
+        goalNodeId: 'none',
+        adjacency: { hub: ['a', 'b'], a: ['hub'], b: ['hub'] },
+      }
+    }
+
+    beforeEach(() => {
+      vi.spyOn(Math, 'random').mockReturnValue(0) // randomWalk always takes each node's first adjacency entry
+      useProgressionStore.setState({ searcherLevel: 1 }) // a second walker, already resting on 'a'
+      const graph = buildHubGraph()
+      useRunStore.setState({
+        graph,
+        walkers: [createWalker('hub'), { ...createWalker('a'), path: ['hub', 'a'] }],
+        walkerTransits: [null, null],
+        discovery: {
+          discoveredNodeIds: new Set(['hub', 'a', 'b']),
+          discoveredEdgeIds: new Set(['a--hub', 'b--hub']),
+          visitedNodeIds: new Set(['hub', 'a']),
+        },
+        strategyMemories: [undefined, undefined],
+        sharedRecentPath: [],
+        loadedStrategyId: DEFAULT_STRATEGY_ID,
+        status: 'exploring',
+        redirectPath: null,
+      })
+    })
+
+    it('steers a searcher away from a node another walker currently occupies', () => {
+      useProgressionStore.setState({ mutexEnabled: true })
+      handle = startWalkerScheduler()
+      vi.advanceTimersByTime(1) // let the initial dispatch timer fire
+
+      // Unrestricted, randomWalk (mocked) would send walkers[0] to 'a' — but walkers[1] is already there.
+      expect(useRunStore.getState().walkerTransits[0]?.nextNodeId).toBe('b')
+    })
+
+    it('does not restrict movement when mutex is disabled', () => {
+      handle = startWalkerScheduler()
+      vi.advanceTimersByTime(1)
+
+      expect(useRunStore.getState().walkerTransits[0]?.nextNodeId).toBe('a')
     })
   })
 

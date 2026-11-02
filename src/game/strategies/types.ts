@@ -10,6 +10,8 @@ export interface StrategyContext {
   memory: unknown
   /** How many of the walker's most recent nodes it can remember — a universal cap every strategy respects, not just one strategy's trick. Ignored by logic that doesn't use node history at all. */
   memoryLevel: number
+  /** Nodes currently claimed by another walker (Traffic Control) — off-limits as a next hop while set. Undefined/empty when Traffic Control isn't owned or is toggled off. */
+  excludedNodeIds?: ReadonlySet<NodeId>
 }
 
 /** What kind of thing a highlighted group of nodes represents, so GraphView can color each consistently across strategies. */

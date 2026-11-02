@@ -15,9 +15,21 @@ export function hasMet(graph: Graph, walker: WalkerState, walker2: WalkerState):
   return walker.path.includes(walker2.currentNodeId) || walker2.path.includes(walker.currentNodeId)
 }
 
-/** Pure: the nearest-by-hops node this walker's half of the graph hasn't visited yet, or null if nothing unvisited is reachable (its side has no territory left). */
-export function decideBidirectionalHop(graph: Graph, discovery: DiscoveryState, walker: WalkerState): NodeId | null {
-  return nextHopToward(graph, walker.currentNodeId, (id) => !discovery.visitedNodeIds.has(id), uniformWeight)
+/** Pure: the nearest-by-hops node this walker's half of the graph hasn't visited yet, or null if nothing unvisited is reachable (its side has no territory left). excludedNodeIds (Traffic Control) keeps it off any node the other half currently occupies or is mid-transit toward. */
+export function decideBidirectionalHop(
+  graph: Graph,
+  discovery: DiscoveryState,
+  walker: WalkerState,
+  excludedNodeIds?: ReadonlySet<NodeId>,
+): NodeId | null {
+  return nextHopToward(
+    graph,
+    walker.currentNodeId,
+    (id) => !discovery.visitedNodeIds.has(id),
+    uniformWeight,
+    undefined,
+    (id) => !excludedNodeIds?.has(id),
+  )
 }
 
 export interface CommitBidirectionalHopInput {

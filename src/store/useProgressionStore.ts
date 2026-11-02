@@ -16,6 +16,7 @@ import {
   MAIN_WALKER_SPEED_UPGRADE_INFO,
   MINIMAP_UPGRADE,
   MOMENTUM_UPGRADE_INFO,
+  MUTEX_UPGRADE,
   NODE_MEMORY_UPGRADE_INFO,
   QUICK_STEPS_UPGRADE_INFO,
   REVISIT_BONUS_UPGRADE_INFO,
@@ -52,6 +53,8 @@ interface ProgressionState {
   exitBonusLevel: number
   /** Whether the minimap is currently shown — only meaningful once 'minimap' is in purchasedUpgradeIds; toggled freely afterward, no re-purchase needed. */
   minimapEnabled: boolean
+  /** Whether Traffic Control's node/edge mutex is currently enforced — only meaningful once 'mutex' is in purchasedUpgradeIds; toggled freely afterward, no re-purchase needed. */
+  mutexEnabled: boolean
   /** Display preference, independent of OS settings — defaults to dark. */
   themeMode: 'dark' | 'light'
   earnCurrency: (amount: number) => void
@@ -73,6 +76,8 @@ interface ProgressionState {
   purchaseClarity: () => boolean
   purchaseMinimap: () => boolean
   toggleMinimap: () => void
+  purchaseMutex: () => boolean
+  toggleMutex: () => void
   toggleTheme: () => void
   setActiveStrategy: (strategyId: string) => void
   /** Jumps the current level to any size from STARTING_GRAPH_NODE_COUNT up to highestGraphNodeCount — a no-op outside that range. Solving from a lower level climbs back up normally and will eventually pass the old high again. */
@@ -110,6 +115,7 @@ export const useProgressionStore = create<ProgressionState>()(
       revisitBonusLevel: 0,
       exitBonusLevel: 0,
       minimapEnabled: true,
+      mutexEnabled: false,
       themeMode: 'dark',
 
       earnCurrency: (amount) => set((state) => ({ currency: earn(state.currency, amount) })),
@@ -319,6 +325,20 @@ export const useProgressionStore = create<ProgressionState>()(
 
       toggleMinimap: () => set((state) => ({ minimapEnabled: !state.minimapEnabled })),
 
+      purchaseMutex: () => {
+        const state = get()
+        if (state.purchasedUpgradeIds.includes(MUTEX_UPGRADE.id)) return false
+        if (state.currency.amount < MUTEX_UPGRADE.cost || state.highestGraphNodeCount < MUTEX_UPGRADE.minLevel) return false
+
+        set({
+          currency: spend(state.currency, MUTEX_UPGRADE.cost),
+          purchasedUpgradeIds: [...state.purchasedUpgradeIds, MUTEX_UPGRADE.id],
+        })
+        return true
+      },
+
+      toggleMutex: () => set((state) => ({ mutexEnabled: !state.mutexEnabled })),
+
       toggleTheme: () => set((state) => ({ themeMode: state.themeMode === 'dark' ? 'light' : 'dark' })),
 
       setActiveStrategy: (strategyId) => {
@@ -350,6 +370,7 @@ export const useProgressionStore = create<ProgressionState>()(
           revisitBonusLevel: 0,
           exitBonusLevel: 0,
           minimapEnabled: true,
+          mutexEnabled: false,
           themeMode: 'dark',
         }),
     }),

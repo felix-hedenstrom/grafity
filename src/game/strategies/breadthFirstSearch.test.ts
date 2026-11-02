@@ -57,6 +57,22 @@ describe('breadthFirstSearch', () => {
     expect(breadthFirstSearch.chooseNextNode(ctx)).toBe('near')
   })
 
+  it('routes around a node excluded by Traffic Control', () => {
+    const graph = branchingGraph()
+    const walker = createWalker('hub')
+    const ctx: StrategyContext = {
+      graph,
+      discovery: createDiscovery(graph, 'hub'),
+      walker,
+      memory: undefined,
+      memoryLevel: 0,
+      excludedNodeIds: new Set(['near']),
+    }
+
+    // 'near' is 1 hop away but claimed by another walker — BFS must route via 'side' instead.
+    expect(breadthFirstSearch.chooseNextNode(ctx)).toBe('side')
+  })
+
   it('getHighlightedNodes returns discovered-but-unvisited nodes as the frontier', () => {
     const graph = branchingGraph()
     const walker = createWalker('hub')

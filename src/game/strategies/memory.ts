@@ -105,12 +105,20 @@ function bestForcedCandidate(candidates: NodeId[], ctx: StrategyContext): NodeId
  * candidate is remembered — forced to revisit — narrows to just the single candidate closest to
  * the discovery frontier instead of picking uniformly among all of them, so a forced revisit
  * still drifts back toward unexplored territory rather than wandering the explored pocket.
+ *
+ * Traffic Control's excludedNodeIds are filtered out first and unconditionally — unlike memory,
+ * which is a soft preference with a forced-revisit fallback, a claimed node is never a valid
+ * choice. If that empties the candidate list entirely, the caller's own no-neighbors fallback
+ * (e.g. pickRandom over the unfiltered list) takes over — this walker is fully boxed in.
  */
 export function filterByMemory(candidates: NodeId[], ctx: StrategyContext): NodeId[] {
+  const available = ctx.excludedNodeIds ? candidates.filter((id) => !ctx.excludedNodeIds!.has(id)) : candidates
+  if (available.length === 0) return available
+
   const remembered = rememberedNodes(ctx.walker.path, ctx.memoryLevel)
-  const novel = candidates.filter((id) => !remembered.has(id))
+  const novel = available.filter((id) => !remembered.has(id))
   if (novel.length > 0) return novel
-  return [bestForcedCandidate(candidates, ctx)]
+  return [bestForcedCandidate(available, ctx)]
 }
 
 /** Truncates a DFS-style stack to the last memoryLevel entries, in place — the walker can't backtrack past what it still remembers. */

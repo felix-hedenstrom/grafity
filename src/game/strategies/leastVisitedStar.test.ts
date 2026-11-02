@@ -42,6 +42,22 @@ describe('leastVisitedStar', () => {
     expect(seen).toEqual(new Set(['b', 'c']))
   })
 
+  it('excludes a node claimed by another walker (Traffic Control), even if it is least-visited', () => {
+    const graph = hubGraph()
+    // c is never visited (would normally win), but it's claimed by another walker.
+    const walker = { ...createWalker('hub'), path: ['hub', 'a', 'hub', 'a', 'hub', 'b', 'hub'] }
+    const ctx: StrategyContext = {
+      graph,
+      discovery: createDiscovery(graph, 'hub'),
+      walker,
+      memory: undefined,
+      memoryLevel: 0,
+      excludedNodeIds: new Set(['c']),
+    }
+
+    expect(leastVisitedStar.chooseNextNode(ctx)).toBe('b')
+  })
+
   it('respects Node Memory filtering before scoring by visit count', () => {
     const graph = hubGraph()
     // c is the least-visited (0 times) but remembered (most recent step) — should be excluded.

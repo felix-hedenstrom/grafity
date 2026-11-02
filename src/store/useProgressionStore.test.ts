@@ -13,6 +13,7 @@ import {
   MAIN_WALKER_SPEED_UPGRADE_INFO,
   MINIMAP_UPGRADE,
   MOMENTUM_UPGRADE_INFO,
+  MUTEX_UPGRADE,
   NODE_MEMORY_UPGRADE_INFO,
   QUICK_STEPS_UPGRADE_INFO,
   REVISIT_BONUS_UPGRADE_INFO,
@@ -46,6 +47,7 @@ beforeEach(() => {
     exitBonusLevel: 0,
     insightMultiplierLevel: 0,
     minimapEnabled: true,
+    mutexEnabled: false,
   })
 })
 
@@ -278,6 +280,38 @@ describe('useProgressionStore', () => {
       expect(useProgressionStore.getState().minimapEnabled).toBe(!before)
       useProgressionStore.getState().toggleMinimap()
       expect(useProgressionStore.getState().minimapEnabled).toBe(before)
+    })
+  })
+
+  describe('purchaseMutex / toggleMutex', () => {
+    it('adds mutex to purchasedUpgradeIds on purchase, and refuses a second purchase', () => {
+      useProgressionStore.setState({
+        currency: earn(createCurrency(), MUTEX_UPGRADE.cost),
+        highestGraphNodeCount: LEVEL_GATE_CLEARED,
+      })
+
+      expect(useProgressionStore.getState().purchaseMutex()).toBe(true)
+      expect(useProgressionStore.getState().purchasedUpgradeIds).toContain(MUTEX_UPGRADE.id)
+
+      expect(useProgressionStore.getState().purchaseMutex()).toBe(false)
+    })
+
+    it('refuses below its level requirement, even with enough currency', () => {
+      useProgressionStore.setState({
+        currency: earn(createCurrency(), MUTEX_UPGRADE.cost),
+        highestGraphNodeCount: MUTEX_UPGRADE.minLevel - 1,
+      })
+
+      expect(useProgressionStore.getState().purchaseMutex()).toBe(false)
+      expect(useProgressionStore.getState().purchasedUpgradeIds).not.toContain(MUTEX_UPGRADE.id)
+    })
+
+    it('toggleMutex flips mutexEnabled back and forth, independent of ownership', () => {
+      const before = useProgressionStore.getState().mutexEnabled
+      useProgressionStore.getState().toggleMutex()
+      expect(useProgressionStore.getState().mutexEnabled).toBe(!before)
+      useProgressionStore.getState().toggleMutex()
+      expect(useProgressionStore.getState().mutexEnabled).toBe(before)
     })
   })
 

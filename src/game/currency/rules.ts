@@ -5,15 +5,15 @@ export const DISCOVERY_REWARD_PER_NODE = 2
 export const REVISIT_REWARD = 0.2
 export const GOAL_REWARD_PER_NODE = 10
 
-/** Discovery Bonus is repeatable — each purchase raises the discovery reward rate by another 20%, compounding, uncapped. */
+/** Discovery Bonus is repeatable — each purchase raises the discovery reward rate by another 20%, compounding, uncapped. Cost grows faster (25%) than the reward itself, so it isn't a permanent breakeven. */
 export const DISCOVERY_BONUS_PERCENT_PER_LEVEL = 0.2
 export const DISCOVERY_BONUS_BASE_COST = 15
-export const DISCOVERY_BONUS_COST_GROWTH = 1.2
+export const DISCOVERY_BONUS_COST_GROWTH = 1.25
 
-/** Revisit Bonus is repeatable — each purchase raises the revisit reward rate by another 20%, compounding, uncapped. */
+/** Revisit Bonus is repeatable — each purchase raises the revisit reward rate by another 20%, compounding, uncapped. Cost grows faster (25%) than the reward itself, so it isn't a permanent breakeven. */
 export const REVISIT_BONUS_PERCENT_PER_LEVEL = 0.2
 export const REVISIT_BONUS_BASE_COST = 15
-export const REVISIT_BONUS_COST_GROWTH = 1.2
+export const REVISIT_BONUS_COST_GROWTH = 1.25
 
 /** Exit Bonus is repeatable — each purchase raises the exit reward rate by another 20%, compounding, uncapped. */
 export const EXIT_BONUS_PERCENT_PER_LEVEL = 0.2

@@ -44,6 +44,22 @@ describe('dijkstra', () => {
     expect(dijkstra.chooseNextNode(ctx)).toBe('cheap')
   })
 
+  it('routes around a node excluded by Traffic Control, even if it is the cheaper route', () => {
+    const graph = weightedForkGraph()
+    const walker = createWalker('hub')
+    const ctx: StrategyContext = {
+      graph,
+      discovery: createDiscovery(graph, 'hub'),
+      walker,
+      memory: undefined,
+      memoryLevel: 0,
+      excludedNodeIds: new Set(['cheap']),
+    }
+
+    // 'cheap' would normally win, but it's claimed by another walker — Dijkstra must go via 'pricey'.
+    expect(dijkstra.chooseNextNode(ctx)).toBe('pricey')
+  })
+
   it('getHighlightedNodes returns discovered-but-unvisited nodes as the frontier', () => {
     const graph = weightedForkGraph()
     const walker = createWalker('hub')

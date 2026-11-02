@@ -33,6 +33,7 @@ import {
   MAIN_WALKER_SPEED_UPGRADE_INFO,
   MINIMAP_UPGRADE,
   MOMENTUM_UPGRADE_INFO,
+  MUTEX_UPGRADE,
   NODE_MEMORY_UPGRADE_INFO,
   QUICK_STEPS_UPGRADE_INFO,
   REVISIT_BONUS_UPGRADE_INFO,
@@ -71,7 +72,7 @@ function canAffordOneTime(upgrade: { cost: number; minLevel: number }, owned: bo
   return currencyAmount >= upgrade.cost
 }
 
-const TABS = ['Algorithms', 'Insight', 'Memory', 'Growth', 'Speed', 'Display', 'Achievements'] as const
+const TABS = ['Algorithms', 'Insight', 'Memory', 'Growth', 'Speed', 'Research', 'Achievements'] as const
 type Tab = (typeof TABS)[number]
 
 /** How many upgrades are currently purchasable in each tab — drives the "(N)" badge, omitted entirely when N is 0. */
@@ -98,6 +99,7 @@ function usePurchasableCounts(): Partial<Record<Tab, number>> {
   const amount = currency.amount
   const nextLockedUpgradeId = getNextLockedUpgradeId(purchasedUpgradeIds)
   const nextLockedUpgrade = UPGRADES.find((u) => u.id === nextLockedUpgradeId)
+  const mutexOwned = purchasedUpgradeIds.includes(MUTEX_UPGRADE.id)
 
   return {
     Algorithms: nextLockedUpgrade && canAffordOneTime(nextLockedUpgrade, false, amount, highestGraphNodeCount) ? 1 : 0,
@@ -116,15 +118,19 @@ function usePurchasableCounts(): Partial<Record<Tab, number>> {
       Number(canAffordRepeatable(QUICK_STEPS_UPGRADE_INFO, quickStepsLevel, amount, highestGraphNodeCount)) +
       Number(canAffordRepeatable(DISCOVER_WAIT_UPGRADE_INFO, discoverWaitLevel, amount, highestGraphNodeCount)) +
       Number(canAffordRepeatable(MOMENTUM_UPGRADE_INFO, momentumLevel, amount, highestGraphNodeCount)) +
-      Number(canAffordRepeatable(SEARCHER_UPGRADE_INFO, searcherLevel, amount, highestGraphNodeCount)) +
       Number(
-        (mainWalkerSpeedLevel > 0 || searcherLevel > 0) &&
+        mutexOwned &&
+          (mainWalkerSpeedLevel > 0 || searcherLevel > 0) &&
           canAffordRepeatable(MAIN_WALKER_SPEED_UPGRADE_INFO, mainWalkerSpeedLevel, amount, highestGraphNodeCount),
       ) +
-      Number(ufoSpeedLevel < UFO_SPEED_MAX_LEVEL && canAffordRepeatable(UFO_SPEED_UPGRADE_INFO, ufoSpeedLevel, amount, highestGraphNodeCount)),
-    Display:
+      Number(
+        mutexOwned && ufoSpeedLevel < UFO_SPEED_MAX_LEVEL && canAffordRepeatable(UFO_SPEED_UPGRADE_INFO, ufoSpeedLevel, amount, highestGraphNodeCount),
+      ),
+    Research:
       Number(canAffordOneTime(CLARITY_UPGRADE, clarityLevel > 0, amount, highestGraphNodeCount)) +
-      Number(canAffordOneTime(MINIMAP_UPGRADE, purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id), amount, highestGraphNodeCount)),
+      Number(canAffordOneTime(MINIMAP_UPGRADE, purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id), amount, highestGraphNodeCount)) +
+      Number(canAffordOneTime(MUTEX_UPGRADE, purchasedUpgradeIds.includes(MUTEX_UPGRADE.id), amount, highestGraphNodeCount)) +
+      Number(mutexOwned && canAffordRepeatable(SEARCHER_UPGRADE_INFO, searcherLevel, amount, highestGraphNodeCount)),
   }
 }
 
@@ -158,7 +164,7 @@ export function Shop() {
         {activeTab === 'Memory' && <MemoryTab />}
         {activeTab === 'Growth' && <GrowthTab />}
         {activeTab === 'Speed' && <SpeedTab />}
-        {activeTab === 'Display' && <DisplayTab />}
+        {activeTab === 'Research' && <ResearchTab />}
         {activeTab === 'Achievements' && <AchievementsTab />}
       </div>
     </div>
@@ -360,10 +366,10 @@ function SpeedTab() {
   const mainWalkerSpeedLevel = useProgressionStore((s) => s.mainWalkerSpeedLevel)
   const ufoSpeedLevel = useProgressionStore((s) => s.ufoSpeedLevel)
   const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
+  const mutexOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(MUTEX_UPGRADE.id))
   const purchaseQuickStepsLevel = useProgressionStore((s) => s.purchaseQuickStepsLevel)
   const purchaseDiscoverWaitLevel = useProgressionStore((s) => s.purchaseDiscoverWaitLevel)
   const purchaseMomentumLevel = useProgressionStore((s) => s.purchaseMomentumLevel)
-  const purchaseSearcherLevel = useProgressionStore((s) => s.purchaseSearcherLevel)
   const purchaseMainWalkerSpeedLevel = useProgressionStore((s) => s.purchaseMainWalkerSpeedLevel)
   const purchaseUfoSpeedLevel = useProgressionStore((s) => s.purchaseUfoSpeedLevel)
   const runStartedAt = useRunStore((s) => s.runStartedAt)
@@ -415,33 +421,30 @@ function SpeedTab() {
         highestLevel={highestGraphNodeCount}
         onBuy={purchaseDiscoverWaitLevel}
       />
-      <RepeatableUpgradeCard
-        info={SEARCHER_UPGRADE_INFO}
-        level={searcherLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseSearcherLevel}
-      />
-      <RepeatableUpgradeCard
-        info={MAIN_WALKER_SPEED_UPGRADE_INFO}
-        level={mainWalkerSpeedLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseMainWalkerSpeedLevel}
-        extraLock={{ locked: searcherLevel === 0, message: 'Requires Extra Searcher' }}
-      />
-      <RepeatableUpgradeCard
-        info={UFO_SPEED_UPGRADE_INFO}
-        level={ufoSpeedLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseUfoSpeedLevel}
-      />
+      {mutexOwned && (
+        <RepeatableUpgradeCard
+          info={MAIN_WALKER_SPEED_UPGRADE_INFO}
+          level={mainWalkerSpeedLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseMainWalkerSpeedLevel}
+          extraLock={{ locked: searcherLevel === 0, message: 'Requires Extra Searcher' }}
+        />
+      )}
+      {mutexOwned && (
+        <RepeatableUpgradeCard
+          info={UFO_SPEED_UPGRADE_INFO}
+          level={ufoSpeedLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseUfoSpeedLevel}
+        />
+      )}
     </div>
   )
 }
 
-function DisplayTab() {
+function ResearchTab() {
   const currency = useProgressionStore((s) => s.currency)
   const clarityLevel = useProgressionStore((s) => s.clarityLevel)
   const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
@@ -450,6 +453,12 @@ function DisplayTab() {
   const minimapEnabled = useProgressionStore((s) => s.minimapEnabled)
   const purchaseMinimap = useProgressionStore((s) => s.purchaseMinimap)
   const toggleMinimap = useProgressionStore((s) => s.toggleMinimap)
+  const mutexOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(MUTEX_UPGRADE.id))
+  const mutexEnabled = useProgressionStore((s) => s.mutexEnabled)
+  const purchaseMutex = useProgressionStore((s) => s.purchaseMutex)
+  const toggleMutex = useProgressionStore((s) => s.toggleMutex)
+  const searcherLevel = useProgressionStore((s) => s.searcherLevel)
+  const purchaseSearcherLevel = useProgressionStore((s) => s.purchaseSearcherLevel)
   const clarityOwned = clarityLevel > 0
 
   return (
@@ -476,6 +485,26 @@ function DisplayTab() {
         minLevel={MINIMAP_UPGRADE.minLevel}
         highestLevel={highestGraphNodeCount}
       />
+      <UpgradeCard
+        name={MUTEX_UPGRADE.name}
+        description={MUTEX_UPGRADE.description}
+        isActive={mutexEnabled}
+        onUse={mutexOwned ? toggleMutex : undefined}
+        cost={mutexOwned ? undefined : MUTEX_UPGRADE.cost}
+        canAfford={currency.amount >= MUTEX_UPGRADE.cost}
+        onBuy={mutexOwned ? undefined : purchaseMutex}
+        minLevel={MUTEX_UPGRADE.minLevel}
+        highestLevel={highestGraphNodeCount}
+      />
+      {mutexOwned && (
+        <RepeatableUpgradeCard
+          info={SEARCHER_UPGRADE_INFO}
+          level={searcherLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseSearcherLevel}
+        />
+      )}
     </div>
   )
 }

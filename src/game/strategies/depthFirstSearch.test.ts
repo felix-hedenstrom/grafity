@@ -53,6 +53,34 @@ describe('depthFirstSearch', () => {
     expect(memory.stack).toEqual(['root', 'a'])
   })
 
+  it('excludes a claimed node from the unvisited candidates (Traffic Control)', () => {
+    const graph = treeGraph() // root: ['a', 'b']
+    const walker = createWalker('root')
+    const discovery = createDiscovery(graph, 'root')
+    const memory = { stack: ['root'] }
+
+    const next = depthFirstSearch.chooseNextNode({ graph, discovery, walker, memory, memoryLevel: 0, excludedNodeIds: new Set(['a']) })
+
+    expect(next).toBe('b')
+  })
+
+  it('falls back to a plain neighbor (ignoring exclusion) when the only backtrack target is claimed — the scheduler backstop handles the actual wait', () => {
+    const graph = treeGraph()
+    const walker = { ...createWalker('c'), currentNodeId: 'c', previousNodeId: 'a', path: ['root', 'a', 'c'] }
+    const discovery = {
+      discoveredNodeIds: new Set(['root', 'a', 'c']),
+      discoveredEdgeIds: new Set<string>(),
+      visitedNodeIds: new Set(['root', 'a', 'c']),
+    }
+    // Every neighbor of 'c' is visited, so it would normally backtrack to 'a' — but 'a' is claimed.
+    // 'a' is also c's only neighbor, so there's nowhere else to go; it still returns a valid node.
+    const memory = { stack: ['root', 'a', 'c'] }
+
+    const next = depthFirstSearch.chooseNextNode({ graph, discovery, walker, memory, memoryLevel: 0, excludedNodeIds: new Set(['a']) })
+
+    expect(graph.adjacency['c']).toContain(next)
+  })
+
   it('getHighlightedNodes returns the current stack as a "stack" group', () => {
     const graph = treeGraph()
     const walker = { ...createWalker('c'), currentNodeId: 'c', previousNodeId: 'a', path: ['root', 'a', 'c'] }

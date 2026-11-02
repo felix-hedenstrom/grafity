@@ -114,7 +114,7 @@ export const UPGRADES: UpgradeDefinition[] = [
   {
     id: 'a-star',
     name: 'A*',
-    description: "The walker can see the exit now — beelines straight for it along the cheapest weighted route, using the graph's layout as a heuristic instead of exploring outward first.",
+    description: "The Spaceship can see the exit now — beelines straight for it along the cheapest weighted route, using the graph's layout as a heuristic instead of exploring outward first.",
     cost: 10200,
     minLevel: 340,
     strategyId: aStar.id,
@@ -122,7 +122,7 @@ export const UPGRADES: UpgradeDefinition[] = [
   {
     id: 'bidirectional',
     name: 'Bidirectional Search',
-    description: 'Two walkers — one from the start, one from the exit — searching toward each other until they meet in the middle. Always exactly two, from opposite ends.',
+    description: 'The Spaceship and a UFO — one from the start, one from the exit — searching toward each other until they meet in the middle. Always exactly two, from opposite ends.',
     cost: 20000,
     minLevel: 550,
     strategyId: bidirectionalSearch.id,
@@ -256,9 +256,9 @@ export const SEARCHER_UPGRADE_INFO: RepeatableUpgradeInfo = {
   minLevel: 35,
 }
 
-/** Main Walker Speed is repeatable and only ever speeds up the Spaceship (walkers[0]) — every UFO is unaffected. Only matters once there's more than one walker in play, so it's gated well behind Extra Searcher. */
+/** Spaceship Speed is repeatable and only ever speeds up the Spaceship (walkers[0]) — every UFO is unaffected. Only matters once there's more than one walker in play, so it's gated well behind Extra Searcher. */
 export const MAIN_WALKER_SPEED_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Main Walker Speed',
+  name: 'Spaceship Speed',
   description: `+${MAIN_WALKER_SPEED_PER_LEVEL} travel speed per purchase — Spaceship only.`,
   baseCost: MAIN_WALKER_SPEED_BASE_COST,
   costGrowth: MAIN_WALKER_SPEED_COST_GROWTH,
@@ -295,4 +295,14 @@ export const MINIMAP_UPGRADE: UpgradeDefinition = {
   description: 'A small overview of the whole graph, shown once the camera has to zoom in close.',
   cost: 400,
   minLevel: 40,
+}
+
+/** Traffic Control is a one-time unlock (not repeatable) — once owned it can be toggled on or off
+ * freely. While on, no two walkers may occupy or cross into the same node at the same time. */
+export const MUTEX_UPGRADE: UpgradeDefinition = {
+  id: 'mutex',
+  name: 'Traffic Control',
+  description: 'Walkers can no longer pass through or land on a node another walker is currently using.',
+  cost: 500,
+  minLevel: 45,
 }

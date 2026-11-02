@@ -66,6 +66,22 @@ describe('leastVisitedPath', () => {
     expect(seen).toEqual(new Set(['b', 'c']))
   })
 
+  it('excludes a node claimed by another walker (Traffic Control), even if its edge is least-crossed', () => {
+    const graph = hubGraph()
+    // hub-c is the least-crossed edge (0 times), but c is claimed by another walker.
+    const walker = { ...createWalker('hub'), path: ['hub', 'a', 'hub', 'a', 'hub', 'b', 'hub'] }
+    const ctx: StrategyContext = {
+      graph,
+      discovery: createDiscovery(graph, 'hub'),
+      walker,
+      memory: undefined,
+      memoryLevel: 0,
+      excludedNodeIds: new Set(['c']),
+    }
+
+    expect(leastVisitedPath.chooseNextNode(ctx)).toBe('b')
+  })
+
   it('respects Node Memory filtering before scoring by edge-crossing count', () => {
     const graph = hubGraph()
     // hub-c is the least-crossed edge (0 times) but c is remembered (most recent step) — should be excluded.

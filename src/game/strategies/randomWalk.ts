@@ -8,7 +8,8 @@ export const randomWalk: TraversalStrategy = {
   memoryMultiplier: 1,
   chooseNextNode(ctx) {
     const neighbors = ctx.graph.adjacency[ctx.walker.currentNodeId]
-    return pickRandom(Math.random, filterByMemory(neighbors, ctx))
+    const candidates = filterByMemory(neighbors, ctx)
+    return pickRandom(Math.random, candidates.length > 0 ? candidates : neighbors)
   },
   getHighlightedNodes(ctx) {
     return [{ kind: 'remembered', nodeIds: rememberedNodes(ctx.walker.path, ctx.memoryLevel) }]

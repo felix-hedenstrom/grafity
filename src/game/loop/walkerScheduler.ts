@@ -11,8 +11,27 @@ import type { WalkerState } from '../walker/types'
 import { useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
 import { commitBidirectionalHop, decideBidirectionalHop, hasMet } from './bidirectionalStep'
+import { claimedNodeIds } from './occupancy'
+import type { OccupancyEntry } from './occupancy'
 import { commitHop, decideNextHop } from './searcherStep'
 import { checkAchievements, computeRewardRates } from './sharedEffects'
+
+/** Every regular searcher's current position/in-flight destination, index-aligned with walkers — the raw material Traffic Control's mutex check claims nodes from. Never meaningful in Bidirectional mode (walkers holds just the forward half there). */
+function searcherOccupancyEntries(runState: ReturnType<typeof useRunStore.getState>): OccupancyEntry[] {
+  return runState.walkers.map((w, idx) => ({
+    currentNodeId: w.currentNodeId,
+    transitTarget: runState.walkerTransits[idx]?.nextNodeId ?? null,
+  }))
+}
+
+/** Bidirectional's two halves as occupancy entries — forward always at index 0, reverse at index 1, matching the selfIndex passed to claimedNodeIds in departBidirectional. */
+function bidirectionalOccupancyEntries(runState: ReturnType<typeof useRunStore.getState>): OccupancyEntry[] {
+  const entries: OccupancyEntry[] = []
+  const forward = runState.walkers[0]
+  if (forward) entries.push({ currentNodeId: forward.currentNodeId, transitTarget: runState.walkerTransits[0]?.nextNodeId ?? null })
+  if (runState.walker2) entries.push({ currentNodeId: runState.walker2.currentNodeId, transitTarget: runState.walker2Transit?.nextNodeId ?? null })
+  return entries
+}
 
 /** The main walker's deterministic route to the real goal once it's known (another walker found it first, or Bidirectional's two halves met) — reuses the same BFS every strategy's own pathfinding is built on, planning only through nodes already discovered (always enough, since the discovery that revealed/connected the goal is shared). Null if fromNodeId is already the goal. */
 function planRedirectPath(graph: Graph, discoveredNodeIds: Set<NodeId>, fromNodeId: NodeId): NodeId[] | null {
@@ -102,8 +121,10 @@ function departSearcher(i: number): void {
 
   const progression = useProgressionStore.getState()
   const redirectedHop = i === 0 ? redirectedNextHop(runState.redirectPath) : null
+  const excludedNodeIds = progression.mutexEnabled ? claimedNodeIds(searcherOccupancyEntries(runState), i) : undefined
 
   let nextNodeId: NodeId
+  let applyDecision: (() => void) | null = null
   if (redirectedHop !== null) {
     nextNodeId = redirectedHop
   } else {
@@ -118,14 +139,24 @@ function departSearcher(i: number): void {
       memory: runState.strategyMemories[i],
       memoryLevel,
       sharedRecentPath: runState.sharedRecentPath,
+      excludedNodeIds,
     })
     nextNodeId = decided.nextNodeId
-
-    useRunStore.setState((s) => ({
-      strategyMemories: s.strategyMemories.map((m, idx) => (idx === i ? decided.memory : m)),
-      sharedRecentPath: [...s.sharedRecentPath, walker.currentNodeId],
-    }))
+    applyDecision = () =>
+      useRunStore.setState((s) => ({
+        strategyMemories: s.strategyMemories.map((m, idx) => (idx === i ? decided.memory : m)),
+        sharedRecentPath: [...s.sharedRecentPath, walker.currentNodeId],
+      }))
   }
+
+  // Traffic Control: every neighbor is currently claimed by another walker (fully boxed in) — wait
+  // a tick and re-decide rather than departing into a collision. Strategies already steer away from
+  // excludedNodeIds themselves; this is just the backstop for when no unclaimed neighbor exists at all.
+  if (excludedNodeIds?.has(nextNodeId)) {
+    searcherTimers[i] = setTimeout(() => departSearcher(i), MIN_TICK_INTERVAL_MS)
+    return
+  }
+  applyDecision?.()
 
   const edgeWeight = getEdgeWeight(runState.graph, walker.currentNodeId, nextNodeId)
   const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight, i === 0)
@@ -280,13 +311,19 @@ function departBidirectional(slot: BidirectionalSlot): void {
   const walker = getBidirectionalWalker(slot)
   if (runState.status !== 'exploring' || !walker) return
 
-  const nextNodeId = decideBidirectionalHop(runState.graph, runState.discovery, walker)
+  const progression = useProgressionStore.getState()
+  const excludedNodeIds = progression.mutexEnabled
+    ? claimedNodeIds(bidirectionalOccupancyEntries(runState), slot === 'forward' ? 0 : 1)
+    : undefined
+
+  const nextNodeId = decideBidirectionalHop(runState.graph, runState.discovery, walker, excludedNodeIds)
   if (nextNodeId === null) {
+    // Mutex-blocked (every unvisited node this side can reach is currently claimed) and a genuine
+    // "nothing left unvisited" stall both land here — handleBidirectionalStall re-checks the other
+    // side without any exclusion, so contention alone never gets mistaken for the search being done.
     handleBidirectionalStall(slot)
     return
   }
-
-  const progression = useProgressionStore.getState()
   const edgeWeight = getEdgeWeight(runState.graph, walker.currentNodeId, nextNodeId)
   const travelMs = computeEdgeTravelMs(buildSpeedProgression(progression), edgeWeight, slot === 'forward')
   useRunStore.setState((s) =>

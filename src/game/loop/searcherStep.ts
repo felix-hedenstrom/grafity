@@ -29,6 +29,8 @@ export interface DecideHopInput {
   memoryLevel: number
   /** The pooled Node Memory window every searcher reads — what makes "sharing memory" mean literally seeing each other's recent steps. */
   sharedRecentPath: NodeId[]
+  /** Nodes currently claimed by another walker — passed through to the strategy only while Traffic Control is owned and enabled. */
+  excludedNodeIds?: ReadonlySet<NodeId>
 }
 
 export interface DecideHopResult {
@@ -45,6 +47,7 @@ export function decideNextHop(input: DecideHopInput): DecideHopResult {
     walker: { ...input.walker, path: [...input.sharedRecentPath, input.walker.currentNodeId] },
     memory: input.memory,
     memoryLevel: input.memoryLevel,
+    excludedNodeIds: input.excludedNodeIds,
   }
   const nextNodeId = input.strategy.chooseNextNode(ctx)
   return { nextNodeId, memory: ctx.memory }

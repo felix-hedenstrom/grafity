@@ -21,9 +21,9 @@ function heuristicFn(ctx: StrategyContext): (id: string) => number {
   return (id: string) => straightLineDistance(id, goalId, nodesById)
 }
 
-/** Only discovered territory can be searched through or targeted — the walker can't plan routes through fog. */
+/** Only discovered territory can be searched through or targeted — the walker can't plan routes through fog. Also excludes any node currently claimed by another walker, while Traffic Control is active. */
 function isReachableFn(ctx: StrategyContext): (id: string) => boolean {
-  return (id: string) => ctx.discovery.discoveredNodeIds.has(id)
+  return (id: string) => ctx.discovery.discoveredNodeIds.has(id) && !ctx.excludedNodeIds?.has(id)
 }
 
 export const aStar: TraversalStrategy = {

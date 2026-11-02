@@ -44,6 +44,15 @@ describe('decideBidirectionalHop', () => {
     expect(decideBidirectionalHop(graph, discovery, createWalker('e'))).toBe('d')
   })
 
+  it('routes around a node excluded by Traffic Control', () => {
+    const graph = chainGraph()
+    const discovery = startAndGoalDiscovery(graph)
+
+    // 'b' would normally be picked, but it's claimed by the other half — nothing else is
+    // reachable without crossing it, so this side has no move right now.
+    expect(decideBidirectionalHop(graph, discovery, createWalker('a'), new Set(['b']))).toBeNull()
+  })
+
   it('returns null once nothing unvisited is reachable from this walker\'s side', () => {
     const graph = chainGraph()
     const discovery = {

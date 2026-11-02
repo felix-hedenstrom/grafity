@@ -515,7 +515,7 @@ export function GraphView() {
         </button>
       )}
       {isCelebrating && <div className={styles.banner}>Exit found!</div>}
-      {!isCelebrating && isRedirecting && <div className={styles.banner}>Exit found! Main walker heading there…</div>}
+      {!isCelebrating && isRedirecting && <div className={styles.banner}>Exit found! Spaceship heading there…</div>}
       {isWindowed && minimapOwned && minimapEnabled && (
         <Minimap graph={graph} discoveredNodeIds={discovery.discoveredNodeIds} walkerPositions={walkerPositions} viewport={bounds} />
       )}

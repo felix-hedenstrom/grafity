@@ -70,6 +70,16 @@ describe('greedyFrontier', () => {
     expect(seen).toEqual(new Set(['a', 'b']))
   })
 
+  it('excludes a node claimed by another walker (Traffic Control), even if it would otherwise win', () => {
+    const graph = frontierGraph()
+    // 'a' is the best neighbor (opens up 3 undiscovered nodes vs b's 1), but it's claimed.
+    const walker = createWalker('current')
+    const discovery = discoveryOf(['current', 'a', 'b'])
+    const ctx: StrategyContext = { graph, discovery, walker, memory: undefined, memoryLevel: 0, excludedNodeIds: new Set(['a']) }
+
+    expect(greedyFrontier.chooseNextNode(ctx)).toBe('b')
+  })
+
   it('excludes a remembered neighbor from scoring entirely, even if it would otherwise win', () => {
     const graph = frontierGraph()
     // 'a' is the best neighbor (opens up 3 undiscovered nodes vs b's 1), but it's remembered.

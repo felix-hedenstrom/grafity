@@ -86,7 +86,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'meet-in-the-middle',
     name: 'Meet in the Middle',
-    description: 'Unlocked Bidirectional Search — two walkers, one handshake.',
+    description: 'Unlocked Bidirectional Search — Spaceship and UFO, one handshake.',
     check: (ctx) => ctx.purchasedUpgradeIds.includes('bidirectional'),
   },
   {
@@ -104,7 +104,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'speed-demon',
     name: 'Speed Demon',
-    description: '20 levels of Quick Steps — the walker is basically a blur now.',
+    description: '20 levels of Quick Steps — the Spaceship is basically a blur now.',
     check: (ctx) => ctx.quickStepsLevel >= 20,
   },
   {

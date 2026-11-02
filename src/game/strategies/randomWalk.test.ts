@@ -69,6 +69,38 @@ describe('randomWalk', () => {
     }
   })
 
+  it('never returns a node excluded by Traffic Control', () => {
+    const graph = fixedGraph()
+    const walker = createWalker('a')
+    const ctx: StrategyContext = {
+      graph,
+      discovery: createDiscovery(graph, 'a'),
+      walker,
+      memory: undefined,
+      memoryLevel: 0,
+      excludedNodeIds: new Set(['b', 'c']),
+    }
+
+    for (let i = 0; i < 200; i++) {
+      expect(randomWalk.chooseNextNode(ctx)).toBe('d')
+    }
+  })
+
+  it('falls back to any neighbor when every neighbor is excluded', () => {
+    const graph = fixedGraph()
+    const walker = createWalker('a')
+    const ctx: StrategyContext = {
+      graph,
+      discovery: createDiscovery(graph, 'a'),
+      walker,
+      memory: undefined,
+      memoryLevel: 0,
+      excludedNodeIds: new Set(['b', 'c', 'd']),
+    }
+
+    expect(graph.adjacency['a']).toContain(randomWalk.chooseNextNode(ctx))
+  })
+
   it('at a dead end with everything remembered, prefers the oldest node over a random one', () => {
     const graph = deadEndGraph()
     const walker = { ...createWalker('a'), currentNodeId: 'b', previousNodeId: 'a', path: ['a', 'b'] }

@@ -14,7 +14,9 @@ function edgeVisitCount(path: NodeId[], from: NodeId, to: NodeId): number {
 /** Among neighbors the walker hasn't exceeded its memory on, the ones reachable via the edge crossed fewest times so far. */
 function pickLeastVisitedEdge(ctx: StrategyContext): NodeId[] {
   const { graph, walker } = ctx
-  const candidates = filterByMemory(graph.adjacency[walker.currentNodeId], ctx)
+  const allNeighbors = graph.adjacency[walker.currentNodeId]
+  const filtered = filterByMemory(allNeighbors, ctx)
+  const candidates = filtered.length > 0 ? filtered : allNeighbors
 
   let bestCount = Infinity
   let best: NodeId[] = []

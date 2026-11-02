@@ -29,7 +29,7 @@ export const depthFirstSearch: TraversalStrategy = {
     }
 
     const neighbors = graph.adjacency[walker.currentNodeId]
-    const unvisited = neighbors.filter((id) => !discovery.visitedNodeIds.has(id))
+    const unvisited = neighbors.filter((id) => !discovery.visitedNodeIds.has(id) && !ctx.excludedNodeIds?.has(id))
 
     if (unvisited.length > 0) {
       const next = pickRandom(Math.random, unvisited)
@@ -41,9 +41,12 @@ export const depthFirstSearch: TraversalStrategy = {
     // Dead end: pop back to the parent and walk there — DFS backtracking is just retracing one step.
     // If memory doesn't reach far enough back, the stack runs out early and it falls back to a random
     // neighbor instead of a correct backtrack — the cost of forgetting beyond what Node Memory covers.
+    // A claimed parent (Traffic Control) falls through the same way: there's nowhere unclaimed left,
+    // so it picks any neighbor rather than walking into another walker.
     memory.stack.pop()
     const parent = memory.stack[memory.stack.length - 1]
-    return parent ?? pickRandom(Math.random, neighbors)
+    if (parent !== undefined && !ctx.excludedNodeIds?.has(parent)) return parent
+    return pickRandom(Math.random, neighbors)
   },
   getHighlightedNodes(ctx) {
     return isDfsMemory(ctx.memory) ? [{ kind: 'stack', nodeIds: new Set(ctx.memory.stack) }] : []

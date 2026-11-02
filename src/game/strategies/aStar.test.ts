@@ -103,6 +103,16 @@ describe('aStar', () => {
     expect(aStar.chooseNextNode(ctx)).toBe('a')
   })
 
+  it('routes around a node excluded by Traffic Control, even once the goal is known', () => {
+    const graph = positionedForkGraph()
+    const walker = createWalker('hub')
+    const discovery = discoveryWithGoalKnown(graph)
+    const ctx: StrategyContext = { graph, discovery, walker, memory: undefined, memoryLevel: 0, excludedNodeIds: new Set(['near']) }
+
+    // 'near' would normally win (closer to goal), but it's claimed by another walker.
+    expect(aStar.chooseNextNode(ctx)).toBe('far')
+  })
+
   it('getHighlightedNodes shows the discovered frontier while the goal is still unknown', () => {
     const graph = positionedForkGraph()
     const walker = createWalker('hub')
