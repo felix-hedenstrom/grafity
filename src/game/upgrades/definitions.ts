@@ -17,7 +17,7 @@ import {
   REVISIT_BONUS_COST_GROWTH,
   REVISIT_BONUS_PERCENT_PER_LEVEL,
 } from '../currency/rules'
-import { CLARITY_COST } from '../graph/layout'
+import { CLARITY_COST } from '../graph/generatePlanar'
 import {
   MOMENTUM_BASE_COST,
   MOMENTUM_COST_GROWTH,

@@ -4,8 +4,7 @@ import type { AchievementContext } from '../game/achievements/types'
 import { computeDiscoveryRewardPerNode, computeGoalRewardPerNode, computeInsightMultiplier, computeRevisitReward } from '../game/currency/rules'
 import { createDiscovery, revealAroundNode } from '../game/discovery/reveal'
 import type { DiscoveryState } from '../game/discovery/types'
-import { generateGraph } from '../game/graph/generate'
-import { layoutGraph } from '../game/graph/layout'
+import { generatePlanarGraph } from '../game/graph/generatePlanar'
 import type { Graph } from '../game/graph/types'
 import type { NodeId } from '../game/graph/types'
 import { runBidirectionalTick } from '../game/loop/bidirectionalTick'
@@ -73,8 +72,6 @@ interface RunState {
   runStartedAt: number
   tick: () => void
   resetWithNewGraph: () => void
-  /** Re-lays-out the CURRENT graph at a new Clarity level, without resetting the run — otherwise buying Clarity (a one-time purchase) had no visible effect until the player happened to finish or restart the graph they were already on. */
-  relayoutGraph: (clarityLevel: number) => void
 }
 
 function freshRun(): Pick<
@@ -82,7 +79,7 @@ function freshRun(): Pick<
   'graph' | 'walkers' | 'walker2' | 'discovery' | 'strategyMemories' | 'sharedRecentPath' | 'loadedStrategyId' | 'status' | 'runStartedAt'
 > {
   const progression = useProgressionStore.getState()
-  const graph = layoutGraph(generateGraph(progression.graphNodeCount), progression.clarityLevel)
+  const graph = generatePlanarGraph(progression.graphNodeCount, undefined, progression.clarityLevel > 0)
   const isBidirectional = progression.activeStrategyId === bidirectionalSearch.id
   const searcherCount = isBidirectional ? 1 : 1 + progression.searcherLevel
 
@@ -203,6 +200,4 @@ export const useRunStore = create<RunState>((set, get) => ({
   },
 
   resetWithNewGraph: () => set(freshRun()),
-
-  relayoutGraph: (clarityLevel) => set((state) => ({ graph: layoutGraph(state.graph, clarityLevel) })),
 }))

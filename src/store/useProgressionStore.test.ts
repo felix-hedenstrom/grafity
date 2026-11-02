@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createCurrency, earn } from '../game/currency/rules'
-import { CLARITY_MAX_LEVEL } from '../game/graph/layout'
+import { CLARITY_MAX_LEVEL } from '../game/graph/generatePlanar'
 import {
   AMPLIFIER_UPGRADE_INFO,
   CLARITY_UPGRADE,

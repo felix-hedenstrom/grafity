@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { mulberry32 } from '../../utils/rng'
-import { generateGraph } from '../graph/generate'
+import { generatePlanarGraph } from '../graph/generatePlanar'
 import { createDiscovery, revealAroundNode } from './reveal'
 
 describe('revealAroundNode', () => {
   it('discovers the given node and its direct neighbors (radius 1)', () => {
-    const graph = generateGraph(10, mulberry32(1))
+    const graph = generatePlanarGraph(10, mulberry32(1))
     const empty = { discoveredNodeIds: new Set<string>(), discoveredEdgeIds: new Set<string>(), visitedNodeIds: new Set<string>() }
     const { discovery } = revealAroundNode(empty, graph, graph.startNodeId)
 
@@ -17,7 +17,7 @@ describe('revealAroundNode', () => {
   })
 
   it('does not reveal nodes two hops away', () => {
-    const graph = generateGraph(10, mulberry32(1))
+    const graph = generatePlanarGraph(10, mulberry32(1))
     const discovery = createDiscovery(graph, graph.startNodeId)
     const directNeighbors = new Set(graph.adjacency[graph.startNodeId])
 
@@ -30,7 +30,7 @@ describe('revealAroundNode', () => {
   })
 
   it('reports how many nodes were newly discovered this call, counting zero on a pure revisit', () => {
-    const graph = generateGraph(10, mulberry32(1))
+    const graph = generatePlanarGraph(10, mulberry32(1))
     const first = revealAroundNode(
       { discoveredNodeIds: new Set(), discoveredEdgeIds: new Set(), visitedNodeIds: new Set() },
       graph,
@@ -43,7 +43,7 @@ describe('revealAroundNode', () => {
   })
 
   it('never mutates the discovery state passed in', () => {
-    const graph = generateGraph(10, mulberry32(1))
+    const graph = generatePlanarGraph(10, mulberry32(1))
     const original = createDiscovery(graph, graph.startNodeId)
     const originalSize = original.discoveredNodeIds.size
 

@@ -9,7 +9,6 @@ import {
   computeRevisitReward,
   EXPANSION_NODES_PER_LEVEL,
 } from '../../game/currency/rules'
-import { CLARITY_MAX_LEVEL } from '../../game/graph/layout'
 import {
   BASE_EDGES_PER_SECOND,
   computeEdgesPerSecond,
@@ -445,14 +444,6 @@ function DisplayTab() {
   const toggleMinimap = useProgressionStore((s) => s.toggleMinimap)
   const clarityOwned = clarityLevel > 0
 
-  function handleBuyClarity() {
-    if (purchaseClarity()) {
-      // Otherwise this one-time purchase wouldn't visibly do anything until the current graph
-      // happened to finish or reset — re-lay it out immediately so it's felt right away.
-      useRunStore.getState().relayoutGraph(CLARITY_MAX_LEVEL)
-    }
-  }
-
   return (
     <div className={styles.shop}>
       <UpgradeCard
@@ -462,7 +453,7 @@ function DisplayTab() {
         onUse={undefined}
         cost={clarityOwned ? undefined : CLARITY_UPGRADE.cost}
         canAfford={currency.amount >= CLARITY_UPGRADE.cost}
-        onBuy={clarityOwned ? undefined : handleBuyClarity}
+        onBuy={clarityOwned ? undefined : purchaseClarity}
         minLevel={CLARITY_UPGRADE.minLevel}
         highestLevel={highestGraphNodeCount}
       />

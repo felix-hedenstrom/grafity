@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { computeNodesPerSolve, createCurrency, earn, spend } from '../game/currency/rules'
 import type { CurrencyState } from '../game/currency/types'
-import { CLARITY_MAX_LEVEL } from '../game/graph/layout'
+import { CLARITY_MAX_LEVEL } from '../game/graph/generatePlanar'
 import {
   AMPLIFIER_UPGRADE_INFO,
   CLARITY_UPGRADE,

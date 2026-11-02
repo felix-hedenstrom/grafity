@@ -127,22 +127,6 @@ describe('useRunStore', () => {
     expect(walkers[0].stepsTaken).toBeGreaterThanOrEqual(firstWalkerBefore.stepsTaken)
   })
 
-  it('relayoutGraph re-lays-out the current graph immediately, without resetting the run', () => {
-    useRunStore.getState().tick()
-    const { graph: originalGraph, walkers: originalWalkers, discovery: originalDiscovery } = useRunStore.getState()
-
-    useRunStore.getState().relayoutGraph(20)
-
-    const state = useRunStore.getState()
-    expect(state.graph).not.toBe(originalGraph) // a fresh layout object, not a mutation
-    expect(state.graph.nodes.map((n) => n.id)).toEqual(originalGraph.nodes.map((n) => n.id)) // same topology
-    expect(state.graph.startNodeId).toBe(originalGraph.startNodeId)
-    expect(state.graph.goalNodeId).toBe(originalGraph.goalNodeId)
-    // The run itself is untouched — same walkers/discovery, not a fresh run.
-    expect(state.walkers).toBe(originalWalkers)
-    expect(state.discovery).toBe(originalDiscovery)
-  })
-
   describe('bidirectional search', () => {
     beforeEach(() => {
       useProgressionStore.setState({ activeStrategyId: bidirectionalSearch.id })
