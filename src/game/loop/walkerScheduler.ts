@@ -36,6 +36,12 @@ type BidirectionalSlot = 'forward' | 'reverse'
 let searcherTimers: TimerId[] = []
 let walker2Timer: TimerId
 let celebrationTimer: TimerId
+/** Defers the very first dispatch after a graph change by one tick (see reconcile()'s
+ * graph-change branch) so React gets to commit a render of the walkers resting at the fresh
+ * graph's start node, with no transit yet, before any hop is scheduled — otherwise the walkers'
+ * first-ever transit lands in the same batched update as the reset itself, and the UI never
+ * shows them anywhere but already mid-flight toward their first hop. */
+let initialDispatchTimer: TimerId
 let lastSeenGraph: Graph | null = null
 let lastSeenStrategyId: string | null = null
 let lastSeenHasWalker2 = false
@@ -71,6 +77,10 @@ function stopAll(): void {
   if (celebrationTimer !== undefined) {
     clearTimeout(celebrationTimer)
     celebrationTimer = undefined
+  }
+  if (initialDispatchTimer !== undefined) {
+    clearTimeout(initialDispatchTimer)
+    initialDispatchTimer = undefined
   }
 }
 
@@ -432,12 +442,15 @@ function reconcile(): void {
       return
     }
 
-    if (runState.walker2) {
-      departBidirectional('forward')
-      departBidirectional('reverse')
-    } else {
-      for (let i = 0; i < runState.walkers.length; i++) departSearcher(i)
-    }
+    initialDispatchTimer = setTimeout(() => {
+      initialDispatchTimer = undefined
+      if (runState.walker2) {
+        departBidirectional('forward')
+        departBidirectional('reverse')
+      } else {
+        for (let i = 0; i < runState.walkers.length; i++) departSearcher(i)
+      }
+    }, 0)
     return
   }
 
@@ -479,6 +492,7 @@ export function startWalkerScheduler(): GameLoopHandle {
   searcherTimers = []
   walker2Timer = undefined
   celebrationTimer = undefined
+  initialDispatchTimer = undefined
   lastSeenGraph = null
   lastSeenStrategyId = null
   lastSeenHasWalker2 = false
