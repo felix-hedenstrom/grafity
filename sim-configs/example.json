@@ -1,0 +1,6 @@
+{
+  "_comment": "Deep-partial GameConfig override, merged over PRODUCTION_CONFIG by `npm run sim -- --config sim-configs/example.json`. Only state what you change. This example retunes the coupled spacing/acceleration pair (keep spacingAtReferenceCount * baseAcceleration ~= 700, see src/game/config/production.ts) and cheapens Momentum.",
+  "speed": { "baseAccelerationDistancePerSecondSquared": 6.0 },
+  "graph": { "spacingAtReferenceCount": 117 },
+  "upgrades": { "momentum": { "baseCost": 40 } }
+}

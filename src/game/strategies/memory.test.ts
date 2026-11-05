@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { capMemoryStack, filterByMemory, rememberedNodes } from './memory'
+import { capMemoryStack, filterByMemory, PLANNING_HORIZON_FLOOR, plannableFn, rememberedNodes } from './memory'
 import type { StrategyContext } from './types'
 
 function ctxWithPath(path: string[], memoryLevel: number): StrategyContext {
@@ -12,6 +12,7 @@ function ctxWithPath(path: string[], memoryLevel: number): StrategyContext {
       path,
       stepsTaken: path.length - 1,
       hasReachedGoal: false,
+      origin: 'start',
     },
     memory: undefined,
     memoryLevel,
@@ -40,6 +41,16 @@ describe('filterByMemory', () => {
   it('passes through candidates untouched when none are remembered', () => {
     const ctx = ctxWithPath(['a'], 2)
     expect(filterByMemory(['b', 'c'], ctx)).toEqual(['b', 'c'])
+  })
+
+  it('excludes the immediate previous node even at memoryLevel 0, so a walker never involuntarily reverses', () => {
+    const ctx = ctxWithPath(['a', 'b'], 0) // just came from 'a', owns no Node Memory
+    expect(filterByMemory(['a', 'c'], ctx)).toEqual(['c'])
+  })
+
+  it('still lets a true dead end (previous node is the only candidate) retreat, even at memoryLevel 0', () => {
+    const ctx = ctxWithPath(['a', 'b'], 0)
+    expect(filterByMemory(['a'], ctx)).toEqual(['a'])
   })
 
   it('excludes just the remembered candidates when some are novel', () => {
@@ -82,7 +93,7 @@ describe('filterByMemory', () => {
       // path's last 2 entries before 'hub' are 'far' then 'near', so memoryLevel 2 remembers both.
       // 'far' was visited longer ago (index 0 vs near's index 1) — the old recency-only rule would
       // pick it — but 'near' (2 hops from frontier, vs far's 4) is the one that leads back out.
-      walker: { currentNodeId: 'hub', previousNodeId: 'near', path: ['far', 'near', 'hub'], stepsTaken: 2, hasReachedGoal: false },
+      walker: { currentNodeId: 'hub', previousNodeId: 'near', path: ['far', 'near', 'hub'], stepsTaken: 2, hasReachedGoal: false, origin: 'start' },
       memory: undefined,
       memoryLevel: 2,
     }
@@ -104,9 +115,60 @@ describe('capMemoryStack', () => {
     expect(stack).toEqual(['d', 'e'])
   })
 
-  it('empties the stack entirely at memoryLevel 0', () => {
+  it('floors the cap at 1 even at memoryLevel 0, so DFS can still backtrack to its immediate parent', () => {
     const stack = ['a', 'b']
     capMemoryStack(stack, 0)
-    expect(stack).toEqual([])
+    expect(stack).toEqual(['b'])
+  })
+})
+
+describe('plannableFn', () => {
+  /** A ctx whose walker has walked `path`, with full control over what's discovered/visited. */
+  function planCtx(path: string[], memoryLevel: number, discovered: string[], visited: string[], excluded?: string[]): StrategyContext {
+    const ctx = ctxWithPath(path, memoryLevel)
+    return {
+      ...ctx,
+      discovery: { discoveredNodeIds: new Set(discovered), discoveredEdgeIds: new Set(), visitedNodeIds: new Set(visited) },
+      excludedNodeIds: excluded ? new Set(excluded) : undefined,
+    }
+  }
+
+  it('never allows undiscovered nodes', () => {
+    const plannable = plannableFn(planCtx(['a'], 50, ['a'], ['a']))
+    expect(plannable('fog')).toBe(false)
+  })
+
+  it('always allows discovered-but-unvisited frontier nodes, regardless of memory', () => {
+    const plannable = plannableFn(planCtx(['a'], 0, ['a', 'edge'], ['a']))
+    expect(plannable('edge')).toBe(true)
+  })
+
+  it('blocks visited nodes that have fallen out of the remembered window', () => {
+    // Path longer than the floor with memoryLevel 0: the earliest steps are forgotten.
+    const path = ['v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10']
+    const plannable = plannableFn(planCtx(path, 0, path, path))
+    expect(plannable('v0')).toBe(false) // forgotten corridor
+    expect(plannable('v10')).toBe(true) // current node, always in the window
+    expect(plannable('v3')).toBe(true) // within the floor-of-8 window
+  })
+
+  it('applies the planning-horizon floor even at memoryLevel 0', () => {
+    const path = ['a', 'b', 'c']
+    const plannable = plannableFn(planCtx(path, 0, path, path))
+    // Everything fits inside the floor window — nothing is forgotten yet.
+    expect(PLANNING_HORIZON_FLOOR).toBeGreaterThanOrEqual(path.length)
+    expect(plannable('a')).toBe(true)
+  })
+
+  it('a high memory level extends the window past the floor', () => {
+    const path = Array.from({ length: 30 }, (_, i) => `v${i}`)
+    const plannable = plannableFn(planCtx(path, 25, path, path))
+    expect(plannable('v4')).toBe(true) // within the last 25
+    expect(plannable('v0')).toBe(false) // beyond even the raised window
+  })
+
+  it('still excludes Traffic Control claims unconditionally', () => {
+    const plannable = plannableFn(planCtx(['a'], 50, ['a', 'edge'], ['a'], ['edge']))
+    expect(plannable('edge')).toBe(false)
   })
 })

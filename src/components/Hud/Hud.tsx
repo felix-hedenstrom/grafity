@@ -1,5 +1,6 @@
-import { computeDistancePerSecond, computeMomentumMultiplier, QUICK_STEPS_PERCENT_PER_LEVEL } from '../../game/speed/rules'
-import { useNow } from '../../hooks/useNow'
+import { nebulasForGraphSize } from '../../game/currency/rules'
+import { PRESTIGE_UNLOCK_LEVEL } from '../../game/prestige/rules'
+import { usePrestigeStore } from '../../store/usePrestigeStore'
 import { useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -7,23 +8,16 @@ import styles from './Hud.module.css'
 
 export function Hud() {
   const currency = useProgressionStore((s) => s.currency)
-  const quickStepsLevel = useProgressionStore((s) => s.quickStepsLevel)
-  const momentumLevel = useProgressionStore((s) => s.momentumLevel)
   const stepsTaken = useRunStore((s) => s.walkers.reduce((sum, w) => sum + w.stepsTaken, 0))
-  const runStartedAt = useRunStore((s) => s.runStartedAt)
   const visitedCount = useRunStore((s) => s.discovery.visitedNodeIds.size)
   const discoveredCount = useRunStore((s) => s.discovery.discoveredNodeIds.size)
   const totalNodes = useRunStore((s) => s.graph.nodes.length)
   const openIntro = useUiStore((s) => s.openIntro)
   const openOptions = useUiStore((s) => s.openOptions)
-
-  // Momentum's display needs to tick forward with real time even between game ticks.
-  const now = useNow()
-
-  const elapsedSecondsThisRun = (now - runStartedAt) / 1000
-  const distancePerSecond = computeDistancePerSecond({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun })
-  const quickStepsPercent = Math.round(((1 + QUICK_STEPS_PERCENT_PER_LEVEL) ** quickStepsLevel - 1) * 100)
-  const momentumPercent = Math.round((computeMomentumMultiplier(momentumLevel, elapsedSecondsThisRun) - 1) * 100)
+  const openPrestigeShop = useUiStore((s) => s.openPrestigeShop)
+  const prestigeUnlocked = usePrestigeStore((s) => s.lifetimeHighestGraphNodeCount >= PRESTIGE_UNLOCK_LEVEL)
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
+  const projectedNebulas = nebulasForGraphSize(highestGraphNodeCount)
 
   return (
     <div className={styles.hud}>
@@ -47,14 +41,14 @@ export function Hud() {
         <div className={styles.boxValue}>{currency.amount}</div>
       </div>
 
-      <div className={styles.box}>
-        <div className={styles.boxHeading}>Speed</div>
-        <div className={styles.boxValue}>{distancePerSecond.toFixed(1)} distance/sec</div>
-        <div className={styles.boxBreakdown}>
-          {quickStepsLevel > 0 && <div>{`Quick Steps: +${quickStepsPercent}%`}</div>}
-          {momentumLevel > 0 && <div>{`Momentum: +${momentumPercent}%`}</div>}
+      {prestigeUnlocked && (
+        <div className={styles.prestigeBox}>
+          <div className={styles.boxHeading}>Prestige</div>
+          <button type="button" className={styles.prestigeButton} onClick={openPrestigeShop} aria-label="Open prestige shop">
+            +{projectedNebulas} N
+          </button>
         </div>
-      </div>
+      )}
 
       <div className={styles.iconRow}>
         <button type="button" className={styles.iconButton} onClick={openIntro} aria-label="Show introduction">

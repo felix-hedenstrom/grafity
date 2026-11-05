@@ -151,3 +151,31 @@ export function straightLineDistance(a: NodeId, b: NodeId, nodesById: Map<NodeId
   return Math.sqrt(dx * dx + dy * dy)
 }
 
+
+/** Full single-source Dijkstra from fromNodeId over real edge weights, expanding only through nodes isReachable allows — every reached node's distance and parent, for callers that score many candidate targets at once. */
+export function shortestPathsFrom(
+  graph: Graph,
+  fromNodeId: NodeId,
+  isReachable: (id: NodeId) => boolean = () => true,
+): { distance: Map<NodeId, number>; parent: Map<NodeId, NodeId> } {
+  const weighted = buildWeightedAdjacency(graph)
+  const distance = new Map<NodeId, number>([[fromNodeId, 0]])
+  const parent = new Map<NodeId, NodeId>()
+  const settled = new Set<NodeId>()
+  const frontier = new MinHeap()
+  frontier.push(fromNodeId, 0)
+  for (let current = frontier.pop(); current !== undefined; current = frontier.pop()) {
+    if (settled.has(current)) continue
+    settled.add(current)
+    for (const { id: neighbor, weight } of weighted.get(current) ?? []) {
+      if (settled.has(neighbor) || !isReachable(neighbor)) continue
+      const candidate = (distance.get(current) ?? Infinity) + weight
+      if (candidate < (distance.get(neighbor) ?? Infinity)) {
+        distance.set(neighbor, candidate)
+        parent.set(neighbor, current)
+        frontier.push(neighbor, candidate)
+      }
+    }
+  }
+  return { distance, parent }
+}

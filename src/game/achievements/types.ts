@@ -1,17 +1,18 @@
-/** Everything an achievement's check() might need, pulled from both progression and run state so achievements don't depend on either store's exact shape. */
+/** Everything an achievement's check() might need, pulled from progression, run, and prestige state so achievements don't depend on any one store's exact shape. highestGraphNodeCount comes from usePrestigeStore's lifetime field (not useProgressionStore's resettable one), so thresholds already crossed stay reachable across prestige resets. */
 export interface AchievementContext {
   highestGraphNodeCount: number
   purchasedUpgradeIds: string[]
   activeStrategyId: string
   defaultStrategyId: string
-  momentumLevel: number
+  momentumOwned: boolean
   memoryLevel: number
   deepMemoryLevel: number
   expansionLevel: number
   amplifierLevel: number
-  quickStepsLevel: number
   searcherLevel: number
-  clarityLevel: number
+  ftlLevel: number
+  /** Whether Reverse Beacon (the Prestige Shop's bidirectional modifier) has ever been bought. */
+  bidirectionalOwned: boolean
   currencyAmount: number
   discoveredCount: number
   totalNodes: number

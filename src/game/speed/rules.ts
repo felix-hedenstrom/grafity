@@ -1,86 +1,181 @@
-export const MIN_TICK_INTERVAL_MS = 150
-/** How long the goal-reached celebration holds walkers in place before the graph resets — fixed, not derived from any edge/speed math, roughly matching GraphView's burst/banner CSS animations (1.8s) so they finish playing first. */
-export const CELEBRATION_HOLD_MS = 1500
-/** A "typical" edge (around BASE_POINT_SPACING long) takes about 4 seconds to cross at base speed — halved from the original 30 distance/sec tuning. */
-export const BASE_DISTANCE_PER_SECOND = 15
+import type { GameConfig } from '../config/types'
+import { PRODUCTION_CONFIG } from '../config/production'
 
-/** Quick Steps is repeatable — each purchase multiplies the base rate by another 10%, compounding, uncapped (same shape as Momentum/Quick Study). */
-export const QUICK_STEPS_PERCENT_PER_LEVEL = 0.1
-export const QUICK_STEPS_BASE_COST = 60
-export const QUICK_STEPS_COST_GROWTH = 1.1
+/**
+ * Speed/motion rules. All tunable numbers live in GameConfig (config/types.ts) — the speed of
+ * light IS every walker's top speed, Spaceship and UFOs alike, with no per-walker engine speed
+ * underneath it. Within a prestige cycle it's identical on every run; only the FTL prestige
+ * upgrade raises it (computeFtlMultiplier in prestige/rules.ts, applied at the walkerScheduler
+ * call site so this module stays ignorant of the Prestige Shop). In-run speed progression instead
+ * comes from acceleration (Thrusters/Momentum): a walker only ever *reaches* c when an edge is
+ * long enough to ramp all the way up.
+ */
 
-/** Main Walker Speed is repeatable and only ever applies to the Spaceship (walkers[0]) — every UFO ignores it entirely. Same per-level bump as Quick Steps, but gated behind it conceptually since it only matters once there's more than one walker to outrun. */
-export const MAIN_WALKER_SPEED_PER_LEVEL = 6
-export const MAIN_WALKER_SPEED_BASE_COST = 800
-export const MAIN_WALKER_SPEED_COST_GROWTH = 1.3
-
-/** UFO Speed is repeatable but capped — every UFO (every walker besides the Spaceship) travels at this fraction of the Spaceship's current speed, buyable in 1-point steps up to UFO_SPEED_RATIO_MAX. */
-export const UFO_SPEED_RATIO_BASE = 0.5
-export const UFO_SPEED_RATIO_PERCENT_PER_LEVEL = 0.01
-export const UFO_SPEED_RATIO_MAX = 0.75
-export const UFO_SPEED_MAX_LEVEL = Math.round((UFO_SPEED_RATIO_MAX - UFO_SPEED_RATIO_BASE) / UFO_SPEED_RATIO_PERCENT_PER_LEVEL)
-export const UFO_SPEED_BASE_COST = 500
-export const UFO_SPEED_COST_GROWTH = 1.25
-
-/** Momentum is repeatable rather than a single owned/not-owned upgrade — each purchase adds one level, uncapped. */
-export const MOMENTUM_PERCENT_PER_LEVEL = 0.005
-export const MOMENTUM_BASE_COST = 50
-/** Each level costs this much more than the last — geometric, not flat. */
-export const MOMENTUM_COST_GROWTH = 1.12
-/** However much momentum stacks, the speed bonus it grants never exceeds +200% (3x). */
-export const MOMENTUM_MAX_MULTIPLIER = 3
-
-/** How long a walker pauses on a node the first time it visits it — "discovering" it — before departing again. Revisits never pay this; see computeDiscoverWaitMs. */
-export const DISCOVER_WAIT_BASE_MS = 1200
-/** Quick Study is repeatable — each purchase shrinks the discover wait by another 5%, compounding, uncapped (same shape as Momentum: always buyable, diminishing returns, never hits zero). */
-export const DISCOVER_WAIT_PERCENT_PER_LEVEL = 0.05
-export const DISCOVER_WAIT_BASE_COST = 55
-export const DISCOVER_WAIT_COST_GROWTH = 1.1
-
-/** How long (ms) a walker pauses the first time it visits a node, at the given Quick Study level. Zero wait on revisits is handled by the caller, not here. */
-export function computeDiscoverWaitMs(discoverWaitLevel: number): number {
-  return DISCOVER_WAIT_BASE_MS * (1 - DISCOVER_WAIT_PERCENT_PER_LEVEL) ** discoverWaitLevel
+/** How long (ms) a walker pauses the first time it visits a node, at the given Quick Study level — each level shrinks the wait by percentPerLevel, compounding, never hitting zero. Zero wait on revisits is handled by the caller, not here. */
+export function computeDiscoverWaitMs(discoverWaitLevel: number, config: GameConfig = PRODUCTION_CONFIG): number {
+  return config.speed.discoverWaitBaseMs * (1 - config.upgrades.discoverWait.percentPerLevel) ** discoverWaitLevel
 }
 
 export interface SpeedProgression {
-  quickStepsLevel: number
-  momentumLevel: number
+  /** Whether the one-time Momentum unlock is owned. */
+  momentumOwned: boolean
   /** Real elapsed time in the current run (wall clock, not tick count) — deliberately not a lifetime total, so Momentum resets with each new graph. */
   elapsedSecondsThisRun: number
-  /** How many Main Walker Speed levels are owned — applied only when computeDistancePerSecond/computeEdgeTravelMs are called with isMainWalker true. Optional (defaults to 0) so existing call sites that never heard of this upgrade keep working untouched. */
-  mainWalkerSpeedLevel?: number
-  /** How many UFO Speed levels are owned — applied only when isMainWalker is false, scaling the Spaceship's fully-computed speed down to the UFO's ratio. Optional (defaults to 0, i.e. UFO_SPEED_RATIO_BASE). */
-  ufoSpeedLevel?: number
+  /** How many Thrusters levels are owned — governs computeAcceleration, applied the same way to every walker regardless of role. Optional (defaults to 0, i.e. the base acceleration). */
+  thrustersLevel?: number
 }
 
 /** The compounding per-second rate Momentum currently grants, before applying it over elapsed time. */
-export function computeMomentumPercentPerSecond(momentumLevel: number): number {
-  return MOMENTUM_PERCENT_PER_LEVEL * momentumLevel
+export function computeMomentumPercentPerSecond(momentumOwned: boolean, config: GameConfig = PRODUCTION_CONFIG): number {
+  return momentumOwned ? config.upgrades.momentum.percentPerSecond : 0
 }
 
-/** How much faster Momentum alone makes you right now, as a multiplier (1 = no bonus yet), capped at MOMENTUM_MAX_MULTIPLIER. */
-export function computeMomentumMultiplier(momentumLevel: number, elapsedSecondsThisRun: number): number {
-  const raw = (1 + computeMomentumPercentPerSecond(momentumLevel)) ** elapsedSecondsThisRun
-  return Math.min(MOMENTUM_MAX_MULTIPLIER, raw)
+/** How much more acceleration Momentum alone grants right now, as a multiplier (1 = no bonus yet), capped at its configured maxMultiplier. */
+export function computeMomentumMultiplier(momentumOwned: boolean, elapsedSecondsThisRun: number, config: GameConfig = PRODUCTION_CONFIG): number {
+  const raw = (1 + computeMomentumPercentPerSecond(momentumOwned, config)) ** elapsedSecondsThisRun
+  return Math.min(config.upgrades.momentum.maxMultiplier, raw)
 }
 
-/** How fast a UFO travels right now, as a fraction of the Spaceship's current speed — starts at UFO_SPEED_RATIO_BASE, rises by UFO_SPEED_RATIO_PERCENT_PER_LEVEL per purchase, capped at UFO_SPEED_RATIO_MAX regardless of level. */
-export function computeUfoSpeedRatio(ufoSpeedLevel = 0): number {
-  return Math.min(UFO_SPEED_RATIO_MAX, UFO_SPEED_RATIO_BASE + ufoSpeedLevel * UFO_SPEED_RATIO_PERCENT_PER_LEVEL)
+/** Distance/sec², before applying it to any particular edge's crossing. Applies uniformly to every walker (Spaceship and UFOs alike) — nothing here scales by role. Thrusters compounds on the base rate; Momentum stacks multiplicatively on top, time-compounding within the current run (see computeMomentumMultiplier) and capped at its maxMultiplier. The base value is tuned as a pair with graph.spacingAtReferenceCount — see PRODUCTION_CONFIG before retuning either. */
+export function computeAcceleration(thrustersLevel: number, momentumOwned = false, elapsedSecondsThisRun = 0, config: GameConfig = PRODUCTION_CONFIG): number {
+  const base = config.speed.baseAccelerationDistancePerSecondSquared * (1 + config.upgrades.thrusters.percentPerLevel) ** thrustersLevel
+  const momentumMultiplier = computeMomentumMultiplier(momentumOwned, elapsedSecondsThisRun, config)
+  return base * momentumMultiplier
 }
 
-/** Distance/sec, before applying it to any particular edge's weight. isMainWalker adds Main Walker Speed's bonus on top; a UFO instead takes that same fully-computed Spaceship speed and scales it down by computeUfoSpeedRatio, so every other speed upgrade carries over proportionally. */
-export function computeDistancePerSecond(progression: SpeedProgression, isMainWalker = false): number {
-  const mainWalkerBonus = (progression.mainWalkerSpeedLevel ?? 0) * MAIN_WALKER_SPEED_PER_LEVEL
-  const quickStepsBase = BASE_DISTANCE_PER_SECOND * (1 + QUICK_STEPS_PERCENT_PER_LEVEL) ** progression.quickStepsLevel
-  const base = quickStepsBase + mainWalkerBonus
-  const withMomentum =
-    progression.momentumLevel === 0 ? base : base * computeMomentumMultiplier(progression.momentumLevel, progression.elapsedSecondsThisRun)
-  return isMainWalker ? withMomentum : withMomentum * computeUfoSpeedRatio(progression.ufoSpeedLevel)
+export interface EdgeMotion {
+  /** Speed the walker had entering this edge (after clamping to vMax). */
+  entryVelocity: number
+  /** The fastest this edge crossing ever gets — vMax if it cruises (or tops out exactly at vMax), otherwise the solved peak of a triangular profile, or just entryVelocity itself for an edge that brakes immediately with no further acceleration at all. */
+  peakVelocity: number
+  /** ms into this edge's crossing when acceleration stops (reaches peakVelocity) — 0 if it was already at peak (or past it, braking immediately) on entry. */
+  accelEndMs: number
+  /** ms into this edge's crossing when braking begins — null if this edge never brakes (mustStop = false, carrying speed on into the next edge). Equal to accelEndMs when there's no cruise segment between them. */
+  decelStartMs: number | null
+  /** How long (ms) this edge crossing takes under the accel/cruise/decel profile above. */
+  travelMs: number
+  /** Speed the walker is moving at the instant it reaches the far node — 0 if it braked to a stop (mustStop), otherwise whatever it had ramped up to, carried into the next edge as that edge's entry speed. */
+  exitVelocity: number
 }
 
-/** How long (ms) it takes one walker to cross one edge of the given weight (distance) at the current speed. isMainWalker only matters for walkers[0] — see computeDistancePerSecond. */
-export function computeEdgeTravelMs(progression: SpeedProgression, edgeWeight: number, isMainWalker = false): number {
-  const interval = (1000 * edgeWeight) / computeDistancePerSecond(progression, isMainWalker)
-  return Math.max(MIN_TICK_INTERVAL_MS, Math.round(interval))
+/** Floored at minTickIntervalMs — a presentation-driven minimum so motion stays visible. */
+function msFromSeconds(seconds: number, minTickIntervalMs: number): number {
+  return Math.max(minTickIntervalMs, Math.round(seconds * 1000))
+}
+
+/**
+ * Rocket-style motion for one edge crossing: accelerate from the entry speed v0 toward the top
+ * speed vMax, then either brake to a full stop by the far end (mustStop — an unvisited node the
+ * walker actually needs to stand on and decide from) or just keep going at whatever speed it
+ * reached, carrying that velocity into the next edge instead of braking and re-accelerating for
+ * no reason (a node it's already visited, so there's nothing to stop and decide about).
+ *
+ * mustStop handles any entry velocity correctly, not just departing from rest: if there's still
+ * room to accelerate before braking is required, it does (reaching vMax and cruising if the edge
+ * is long enough, otherwise a triangular profile whose peak sits at exactly half the distance
+ * when entry is 0 — the common rest-to-rest case). If the walker is already moving too fast to
+ * accelerate any further without overshooting, it brakes immediately (decelStartMs = 0) — and if
+ * it's moving so fast that it can't even fully stop within the remaining distance (a very short
+ * edge right after a fast cruise), it brakes as hard as possible and arrives with whatever speed
+ * is physically left rather than producing a nonsensical negative-time result.
+ */
+export function computeEdgeMotion(
+  v0: number,
+  vMax: number,
+  acceleration: number,
+  distance: number,
+  mustStop: boolean,
+  minTickIntervalMs = PRODUCTION_CONFIG.speed.minTickIntervalMs,
+): EdgeMotion {
+  const entry = Math.min(v0, vMax)
+
+  if (mustStop) {
+    const stopOnlyDistance = entry ** 2 / (2 * acceleration)
+    if (stopOnlyDistance >= distance) {
+      // No room left to accelerate further — brake immediately, possibly not even fully in time.
+      const exitVelocity = Math.sqrt(Math.max(0, entry ** 2 - 2 * acceleration * distance))
+      const decelTime = (entry - exitVelocity) / acceleration
+      const travelMs = msFromSeconds(decelTime, minTickIntervalMs)
+      return { entryVelocity: entry, peakVelocity: entry, accelEndMs: 0, decelStartMs: 0, travelMs, exitVelocity }
+    }
+
+    const accelDistance = (vMax ** 2 - entry ** 2) / (2 * acceleration)
+    const decelDistance = vMax ** 2 / (2 * acceleration)
+    if (accelDistance + decelDistance <= distance) {
+      const cruiseDistance = distance - accelDistance - decelDistance
+      const accelTime = (vMax - entry) / acceleration
+      const cruiseTime = cruiseDistance / vMax
+      const decelTime = vMax / acceleration
+      const travelMs = msFromSeconds(accelTime + cruiseTime + decelTime, minTickIntervalMs)
+      const accelEndMs = Math.min(travelMs, Math.round(accelTime * 1000))
+      const decelStartMs = Math.min(travelMs, Math.round((accelTime + cruiseTime) * 1000))
+      return { entryVelocity: entry, peakVelocity: vMax, accelEndMs, decelStartMs, travelMs, exitVelocity: 0 }
+    }
+    // Triangular profile: the edge is too short to ever reach vMax — solve for the peak speed
+    // at which the accel leg and the decel-to-zero leg exactly add up to the whole distance.
+    // (entry is 0 or small enough here that this is always reachable — the stopOnlyDistance
+    // check above already ruled out the case where entry is too fast for any accel leg at all.)
+    const peak = Math.sqrt((2 * acceleration * distance + entry ** 2) / 2)
+    const accelTime = (peak - entry) / acceleration
+    const decelTime = peak / acceleration
+    const travelMs = msFromSeconds(accelTime + decelTime, minTickIntervalMs)
+    const accelEndMs = Math.min(travelMs, Math.round(accelTime * 1000))
+    return { entryVelocity: entry, peakVelocity: peak, accelEndMs, decelStartMs: accelEndMs, travelMs, exitVelocity: 0 }
+  }
+
+  const accelDistance = (vMax ** 2 - entry ** 2) / (2 * acceleration)
+  if (accelDistance >= distance) {
+    // Still accelerating when it reaches the far node — carries that lower speed on.
+    const exitVelocity = Math.sqrt(entry ** 2 + 2 * acceleration * distance)
+    const accelTime = (exitVelocity - entry) / acceleration
+    const travelMs = msFromSeconds(accelTime, minTickIntervalMs)
+    return { entryVelocity: entry, peakVelocity: exitVelocity, accelEndMs: travelMs, decelStartMs: null, travelMs, exitVelocity }
+  }
+  const cruiseDistance = distance - accelDistance
+  const accelTime = (vMax - entry) / acceleration
+  const cruiseTime = cruiseDistance / vMax
+  const travelMs = msFromSeconds(accelTime + cruiseTime, minTickIntervalMs)
+  const accelEndMs = Math.min(travelMs, Math.round(accelTime * 1000))
+  return { entryVelocity: entry, peakVelocity: vMax, accelEndMs, decelStartMs: null, travelMs, exitVelocity: vMax }
+}
+
+/**
+ * The motion profile for one edge crossing, assembled from top speed (the speed of light — the
+ * same vMax for every walker) and acceleration (computeAcceleration, Thrusters + Momentum) the
+ * same way everywhere this is needed — the real scheduler (walkerScheduler.ts) and the offline
+ * balance simulator (src/sim/runSimulation.ts) both call this, so they can't drift apart on the
+ * core physics. speedOfLight is raised above the config's baseSpeedOfLight only by the permanent
+ * cross-run FTL upgrade, which lives outside this module's pure SpeedProgression/upgrade-level
+ * inputs; omit it where there are no prestige bonuses (the simulator never has any, by design —
+ * see its module docstring).
+ */
+export function computeNextEdgeMotion(
+  progression: SpeedProgression,
+  v0: number,
+  edgeWeight: number,
+  mustStop: boolean,
+  config: GameConfig = PRODUCTION_CONFIG,
+  speedOfLight = config.speed.baseSpeedOfLight,
+): EdgeMotion {
+  const acceleration = computeAcceleration(progression.thrustersLevel ?? 0, progression.momentumOwned, progression.elapsedSecondsThisRun, config)
+  return computeEdgeMotion(v0, speedOfLight, acceleration, edgeWeight, mustStop, config.speed.minTickIntervalMs)
+}
+
+/**
+ * The instantaneous speed at elapsedMs into an edge crossing, from the same phase breakdown
+ * computeEdgeMotion already solved — accelerating up to peakVelocity, cruising there if there's a
+ * gap between accelEndMs and decelStartMs, then braking down to exitVelocity. Used for both the
+ * retrograde-flip timing (is elapsedMs past decelStartMs?) and any live speed readout, so the
+ * phase math lives in exactly one place.
+ */
+export function velocityAtElapsedMs(motion: EdgeMotion, elapsedMs: number, acceleration: number): number {
+  const t = Math.max(0, Math.min(elapsedMs, motion.travelMs))
+  if (t <= motion.accelEndMs) {
+    return motion.entryVelocity + acceleration * (t / 1000)
+  }
+  if (motion.decelStartMs === null || t <= motion.decelStartMs) {
+    return motion.peakVelocity
+  }
+  const decelSeconds = (t - motion.decelStartMs) / 1000
+  return Math.max(motion.exitVelocity, motion.peakVelocity - acceleration * decelSeconds)
 }

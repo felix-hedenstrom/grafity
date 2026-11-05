@@ -5,6 +5,9 @@ import { GraphView } from './components/GraphView/GraphView'
 import { GreetingToast } from './components/GreetingToast/GreetingToast'
 import { Hud } from './components/Hud/Hud'
 import { OptionsModal } from './components/OptionsModal/OptionsModal'
+import { PrestigeShopModal } from './components/PrestigeShopModal/PrestigeShopModal'
+import { ScannerArrayModal } from './components/ScannerArrayModal/ScannerArrayModal'
+import { ScannerPanel } from './components/ScannerArrayModal/ScannerPanel'
 import { Shop } from './components/Shop/Shop'
 import { startGame } from './game'
 import { useProgressionStore } from './store/useProgressionStore'
@@ -28,6 +31,7 @@ function App() {
       <div className={styles.layout}>
         <div className={styles.graphColumn}>
           <GraphView />
+          <ScannerPanel />
         </div>
         <div className={styles.shopColumn}>
           <Shop />
@@ -36,6 +40,8 @@ function App() {
       <AchievementToast />
       <GreetingToast />
       <OptionsModal />
+      <PrestigeShopModal />
+      <ScannerArrayModal />
     </main>
   )
 }

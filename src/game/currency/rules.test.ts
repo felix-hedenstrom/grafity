@@ -1,16 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Graph } from '../graph/types'
-import {
-  computeDiscoveryReward,
-  computeGoalBonus,
-  computeNodesPerSolve,
-  createCurrency,
-  DISCOVERY_REWARD_PER_NODE,
-  earn,
-  GOAL_REWARD_PER_NODE,
-  REVISIT_REWARD,
-  spend,
-} from './rules'
+import { PRODUCTION_CONFIG } from '../config/production'
+import { computeDiscoveryReward, computeGoalBonus, computeNodesPerSolve, createCurrency, earn, spend } from './rules'
 
 function graphWithNodeCount(count: number): Graph {
   return { nodes: Array.from({ length: count }, () => ({}) as Graph['nodes'][number]), edges: [], startNodeId: '', goalNodeId: '', adjacency: {} }
@@ -25,12 +16,12 @@ describe('currency rules', () => {
 
   it('scales discovery reward with newly discovered node count', () => {
     expect(computeDiscoveryReward(0)).toBe(0)
-    expect(computeDiscoveryReward(3)).toBe(3 * DISCOVERY_REWARD_PER_NODE)
+    expect(computeDiscoveryReward(3)).toBe(3 * PRODUCTION_CONFIG.currency.discoveryRewardPerNode)
   })
 
   it('scales the goal bonus with the size of the graph', () => {
-    expect(computeGoalBonus(graphWithNodeCount(7))).toBe(7 * GOAL_REWARD_PER_NODE)
-    expect(computeGoalBonus(graphWithNodeCount(20))).toBe(20 * GOAL_REWARD_PER_NODE)
+    expect(computeGoalBonus(graphWithNodeCount(7))).toBe(7 * PRODUCTION_CONFIG.currency.goalRewardPerNode)
+    expect(computeGoalBonus(graphWithNodeCount(20))).toBe(20 * PRODUCTION_CONFIG.currency.goalRewardPerNode)
   })
 
   it('earn increases both amount and totalEarned, and is a no-op for non-positive amounts', () => {
@@ -45,7 +36,7 @@ describe('currency rules', () => {
   it('earn rounds away floating-point drift from repeatedly adding the fractional revisit reward', () => {
     let currency = createCurrency()
     for (let i = 0; i < 3; i++) {
-      currency = earn(currency, REVISIT_REWARD)
+      currency = earn(currency, PRODUCTION_CONFIG.currency.revisitReward)
     }
     expect(currency.amount).toBe(0.6)
   })

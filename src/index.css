@@ -11,6 +11,12 @@
   --accent-bg: rgba(192, 132, 252, 0.15);
   --accent-border: rgba(192, 132, 252, 0.5);
   --social-bg: rgba(47, 48, 58, 0.5);
+  /* Scanner Array wiring: laser-green wire on a deep-space panel. */
+  --wire: #4ade80;
+  --wire-glow: rgba(74, 222, 128, 0.55);
+  --wire-bg: rgba(74, 222, 128, 0.12);
+  --wire-border: rgba(74, 222, 128, 0.5);
+  --wire-panel: #070b10;
   --shadow:
     rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
 

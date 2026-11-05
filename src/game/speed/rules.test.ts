@@ -1,210 +1,266 @@
 import { describe, expect, it } from 'vitest'
+import { PRODUCTION_CONFIG } from '../config/production'
 import {
-  BASE_DISTANCE_PER_SECOND,
+  computeAcceleration,
   computeDiscoverWaitMs,
-  computeDistancePerSecond,
-  computeEdgeTravelMs,
+  computeEdgeMotion,
+  computeNextEdgeMotion,
+  velocityAtElapsedMs,
   computeMomentumMultiplier,
   computeMomentumPercentPerSecond,
-  computeUfoSpeedRatio,
-  DISCOVER_WAIT_BASE_MS,
-  DISCOVER_WAIT_PERCENT_PER_LEVEL,
-  MAIN_WALKER_SPEED_PER_LEVEL,
-  MIN_TICK_INTERVAL_MS,
-  MOMENTUM_MAX_MULTIPLIER,
-  MOMENTUM_PERCENT_PER_LEVEL,
-  QUICK_STEPS_PERCENT_PER_LEVEL,
-  UFO_SPEED_MAX_LEVEL,
-  UFO_SPEED_RATIO_BASE,
-  UFO_SPEED_RATIO_MAX,
-  UFO_SPEED_RATIO_PERCENT_PER_LEVEL,
 } from './rules'
 
 /** A fixed edge weight used throughout these tests so the interval math stays comparable across cases. */
 const TEST_EDGE_WEIGHT = 60
-/** The interval crossing TEST_EDGE_WEIGHT takes at base speed, with no upgrades. */
-const BASE_INTERVAL_MS = (1000 * TEST_EDGE_WEIGHT) / BASE_DISTANCE_PER_SECOND
-
-describe('computeEdgeTravelMs', () => {
-  // isMainWalker: true throughout this block so Quick Steps/Momentum stacking is tested in
-  // isolation from the UFO speed ratio (see the 'UFO Speed' describe block below for that).
-  it('returns the base interval with no upgrades and no elapsed time', () => {
-    expect(computeEdgeTravelMs({ quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0 }, TEST_EDGE_WEIGHT, true)).toBe(
-      BASE_INTERVAL_MS,
-    )
-  })
-
-  it('a heavier edge takes proportionally longer to cross', () => {
-    const light = computeEdgeTravelMs({ quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0 }, TEST_EDGE_WEIGHT, true)
-    const heavy = computeEdgeTravelMs({ quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0 }, TEST_EDGE_WEIGHT * 2, true)
-    expect(heavy).toBeCloseTo(light * 2)
-  })
-
-  it('each Quick Steps level compounds the base speed by another 10%, shrinking the interval', () => {
-    const level1 = computeEdgeTravelMs({ quickStepsLevel: 1, momentumLevel: 0, elapsedSecondsThisRun: 0 }, TEST_EDGE_WEIGHT, true)
-    const level2 = computeEdgeTravelMs({ quickStepsLevel: 2, momentumLevel: 0, elapsedSecondsThisRun: 0 }, TEST_EDGE_WEIGHT, true)
-    expect(level1).toBeLessThan(BASE_INTERVAL_MS)
-    expect(level2).toBeLessThan(level1)
-  })
-
-  it('Momentum makes the interval shrink as elapsed time grows', () => {
-    const early = computeEdgeTravelMs({ quickStepsLevel: 0, momentumLevel: 1, elapsedSecondsThisRun: 10 }, TEST_EDGE_WEIGHT, true)
-    const later = computeEdgeTravelMs({ quickStepsLevel: 0, momentumLevel: 1, elapsedSecondsThisRun: 500 }, TEST_EDGE_WEIGHT, true)
-    expect(later).toBeLessThan(early)
-    expect(early).toBeLessThan(BASE_INTERVAL_MS)
-  })
-
-  it('a higher momentum level shrinks the interval more at the same elapsed time', () => {
-    const lowLevel = computeEdgeTravelMs({ quickStepsLevel: 0, momentumLevel: 1, elapsedSecondsThisRun: 20 }, TEST_EDGE_WEIGHT, true)
-    const highLevel = computeEdgeTravelMs({ quickStepsLevel: 0, momentumLevel: 10, elapsedSecondsThisRun: 20 }, TEST_EDGE_WEIGHT, true)
-    expect(highLevel).toBeLessThan(lowLevel)
-  })
-
-  it('momentumLevel 0 applies no bonus regardless of elapsed time', () => {
-    const interval = computeEdgeTravelMs({ quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 500 }, TEST_EDGE_WEIGHT, true)
-    expect(interval).toBe(BASE_INTERVAL_MS)
-  })
-
-  it('never drops below the minimum interval, however much speed is stacked', () => {
-    const interval = computeEdgeTravelMs(
-      { quickStepsLevel: 50, momentumLevel: 50, elapsedSecondsThisRun: 10_000 },
-      TEST_EDGE_WEIGHT,
-      true,
-    )
-    expect(interval).toBe(MIN_TICK_INTERVAL_MS)
-  })
-
-  it('stacks Quick Steps and Momentum multiplicatively', () => {
-    const both = computeEdgeTravelMs({ quickStepsLevel: 2, momentumLevel: 1, elapsedSecondsThisRun: 60 }, TEST_EDGE_WEIGHT, true)
-    const quickOnly = computeEdgeTravelMs({ quickStepsLevel: 2, momentumLevel: 0, elapsedSecondsThisRun: 60 }, TEST_EDGE_WEIGHT, true)
-    expect(both).toBeLessThan(quickOnly)
-  })
-})
-
-describe('Main Walker Speed (isMainWalker)', () => {
-  it('computeDistancePerSecond scales mainWalkerSpeedLevel by the UFO ratio when isMainWalker is false (the default)', () => {
-    const progression = { quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0, mainWalkerSpeedLevel: 5 }
-    const expected = (BASE_DISTANCE_PER_SECOND + 5 * MAIN_WALKER_SPEED_PER_LEVEL) * UFO_SPEED_RATIO_BASE
-    expect(computeDistancePerSecond(progression)).toBeCloseTo(expected)
-    expect(computeDistancePerSecond(progression, false)).toBeCloseTo(expected)
-  })
-
-  it('computeDistancePerSecond adds the bonus only when isMainWalker is true', () => {
-    const progression = { quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0, mainWalkerSpeedLevel: 3 }
-    expect(computeDistancePerSecond(progression, true)).toBe(BASE_DISTANCE_PER_SECOND + 3 * MAIN_WALKER_SPEED_PER_LEVEL)
-  })
-
-  it('treats a missing mainWalkerSpeedLevel as zero', () => {
-    const progression = { quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0 }
-    expect(computeDistancePerSecond(progression, true)).toBe(BASE_DISTANCE_PER_SECOND)
-  })
-
-  it('computeEdgeTravelMs crosses the same edge faster for the main walker only', () => {
-    const progression = { quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0, mainWalkerSpeedLevel: 5 }
-    const otherWalker = computeEdgeTravelMs(progression, TEST_EDGE_WEIGHT, false)
-    const mainWalker = computeEdgeTravelMs(progression, TEST_EDGE_WEIGHT, true)
-    expect(mainWalker).toBeLessThan(otherWalker)
-  })
-})
 
 describe('computeMomentumPercentPerSecond', () => {
-  it('is zero at level 0', () => {
-    expect(computeMomentumPercentPerSecond(0)).toBe(0)
+  it('is zero when Momentum is not owned', () => {
+    expect(computeMomentumPercentPerSecond(false)).toBe(0)
   })
 
-  it('is the base rate at level 1', () => {
-    expect(computeMomentumPercentPerSecond(1)).toBeCloseTo(MOMENTUM_PERCENT_PER_LEVEL)
-  })
-
-  it('scales linearly with level, uncapped', () => {
-    expect(computeMomentumPercentPerSecond(10)).toBeCloseTo(10 * MOMENTUM_PERCENT_PER_LEVEL)
+  it('is the configured rate when owned', () => {
+    expect(computeMomentumPercentPerSecond(true)).toBe(PRODUCTION_CONFIG.upgrades.momentum.percentPerSecond)
   })
 })
 
 describe('computeMomentumMultiplier', () => {
+  const rate = PRODUCTION_CONFIG.upgrades.momentum.percentPerSecond
+
   it('is 1 (no bonus) at zero elapsed time', () => {
-    expect(computeMomentumMultiplier(1, 0)).toBe(1)
+    expect(computeMomentumMultiplier(true, 0)).toBe(1)
   })
 
-  it('is 1 (no bonus) at level 0, regardless of elapsed time', () => {
-    expect(computeMomentumMultiplier(0, 1000)).toBe(1)
+  it('is 1 (no bonus) when not owned, regardless of elapsed time', () => {
+    expect(computeMomentumMultiplier(false, 1000)).toBe(1)
   })
 
-  it("compounds by the level's percent each second", () => {
-    expect(computeMomentumMultiplier(1, 1)).toBeCloseTo(1 + MOMENTUM_PERCENT_PER_LEVEL)
-    expect(computeMomentumMultiplier(1, 2)).toBeCloseTo((1 + MOMENTUM_PERCENT_PER_LEVEL) ** 2)
+  it('compounds by the configured percent each second', () => {
+    expect(computeMomentumMultiplier(true, 1)).toBeCloseTo(1 + rate)
+    expect(computeMomentumMultiplier(true, 2)).toBeCloseTo((1 + rate) ** 2)
   })
 
-  it('never exceeds MOMENTUM_MAX_MULTIPLIER, no matter how much time or level is stacked', () => {
-    expect(computeMomentumMultiplier(50, 10_000)).toBe(MOMENTUM_MAX_MULTIPLIER)
-  })
-})
-
-describe('computeDistancePerSecond', () => {
-  it('is the base rate with no upgrades, for the Spaceship (isMainWalker true)', () => {
-    expect(computeDistancePerSecond({ quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0 }, true)).toBe(
-      BASE_DISTANCE_PER_SECOND,
-    )
+  it('reaches the maxMultiplier cap at about five minutes into a run', () => {
+    expect(computeMomentumMultiplier(true, 290)).toBeLessThan(PRODUCTION_CONFIG.upgrades.momentum.maxMultiplier)
+    expect(computeMomentumMultiplier(true, 305)).toBe(PRODUCTION_CONFIG.upgrades.momentum.maxMultiplier)
   })
 
-  it('compounds a 10% bonus per Quick Steps level, for the Spaceship (isMainWalker true)', () => {
-    expect(computeDistancePerSecond({ quickStepsLevel: 1, momentumLevel: 0, elapsedSecondsThisRun: 0 }, true)).toBeCloseTo(
-      BASE_DISTANCE_PER_SECOND * (1 + QUICK_STEPS_PERCENT_PER_LEVEL),
-    )
-    expect(computeDistancePerSecond({ quickStepsLevel: 2, momentumLevel: 0, elapsedSecondsThisRun: 0 }, true)).toBeCloseTo(
-      BASE_DISTANCE_PER_SECOND * (1 + QUICK_STEPS_PERCENT_PER_LEVEL) ** 2,
-    )
-  })
-
-  it('is UFO_SPEED_RATIO_BASE of the base rate for a UFO (isMainWalker false, the default)', () => {
-    expect(computeDistancePerSecond({ quickStepsLevel: 0, momentumLevel: 0, elapsedSecondsThisRun: 0 })).toBeCloseTo(
-      BASE_DISTANCE_PER_SECOND * UFO_SPEED_RATIO_BASE,
-    )
+  it('never exceeds PRODUCTION_CONFIG.upgrades.momentum.maxMultiplier, no matter how much time passes', () => {
+    expect(computeMomentumMultiplier(true, 10_000)).toBe(PRODUCTION_CONFIG.upgrades.momentum.maxMultiplier)
   })
 })
 
-describe('computeUfoSpeedRatio', () => {
-  it('is UFO_SPEED_RATIO_BASE at level 0', () => {
-    expect(computeUfoSpeedRatio(0)).toBe(UFO_SPEED_RATIO_BASE)
+describe('computeAcceleration', () => {
+  it('is the base rate at level 0', () => {
+    expect(computeAcceleration(0)).toBe(PRODUCTION_CONFIG.speed.baseAccelerationDistancePerSecondSquared)
   })
 
-  it('treats a missing level as zero', () => {
-    expect(computeUfoSpeedRatio()).toBe(UFO_SPEED_RATIO_BASE)
+  it('compounds a bonus per Thrusters level', () => {
+    expect(computeAcceleration(1)).toBeCloseTo(PRODUCTION_CONFIG.speed.baseAccelerationDistancePerSecondSquared * (1 + PRODUCTION_CONFIG.upgrades.thrusters.percentPerLevel))
+    expect(computeAcceleration(2)).toBeCloseTo(PRODUCTION_CONFIG.speed.baseAccelerationDistancePerSecondSquared * (1 + PRODUCTION_CONFIG.upgrades.thrusters.percentPerLevel) ** 2)
   })
 
-  it('rises by UFO_SPEED_RATIO_PERCENT_PER_LEVEL per level', () => {
-    expect(computeUfoSpeedRatio(1)).toBeCloseTo(UFO_SPEED_RATIO_BASE + UFO_SPEED_RATIO_PERCENT_PER_LEVEL)
-    expect(computeUfoSpeedRatio(10)).toBeCloseTo(UFO_SPEED_RATIO_BASE + 10 * UFO_SPEED_RATIO_PERCENT_PER_LEVEL)
+  it('unowned Momentum applies no bonus regardless of elapsed time', () => {
+    expect(computeAcceleration(0, false, 500)).toBe(PRODUCTION_CONFIG.speed.baseAccelerationDistancePerSecondSquared)
   })
 
-  it('reaches UFO_SPEED_RATIO_MAX exactly at UFO_SPEED_MAX_LEVEL and never exceeds it beyond that', () => {
-    expect(computeUfoSpeedRatio(UFO_SPEED_MAX_LEVEL)).toBeCloseTo(UFO_SPEED_RATIO_MAX)
-    expect(computeUfoSpeedRatio(UFO_SPEED_MAX_LEVEL + 50)).toBe(UFO_SPEED_RATIO_MAX)
+  it('Momentum grows the acceleration bonus as elapsed time increases', () => {
+    const early = computeAcceleration(0, true, 10)
+    const later = computeAcceleration(0, true, 200)
+    expect(later).toBeGreaterThan(early)
+    expect(early).toBeGreaterThan(PRODUCTION_CONFIG.speed.baseAccelerationDistancePerSecondSquared)
   })
 
-  it("a UFO's computed speed is the Spaceship's speed times the ratio", () => {
-    const progression = { quickStepsLevel: 3, momentumLevel: 2, elapsedSecondsThisRun: 30, mainWalkerSpeedLevel: 4, ufoSpeedLevel: 10 }
-    const spaceshipSpeed = computeDistancePerSecond(progression, true)
-    const ufoSpeed = computeDistancePerSecond(progression, false)
-    expect(ufoSpeed).toBeCloseTo(spaceshipSpeed * computeUfoSpeedRatio(progression.ufoSpeedLevel))
+  it('stacks Thrusters and Momentum multiplicatively', () => {
+    const both = computeAcceleration(2, true, 60)
+    const thrustersOnly = computeAcceleration(2, false, 60)
+    expect(both).toBeGreaterThan(thrustersOnly)
+  })
+
+  it('caps the momentum bonus at PRODUCTION_CONFIG.upgrades.momentum.maxMultiplier, no matter how much time passes', () => {
+    expect(computeAcceleration(0, true, 10_000)).toBe(PRODUCTION_CONFIG.speed.baseAccelerationDistancePerSecondSquared * PRODUCTION_CONFIG.upgrades.momentum.maxMultiplier)
   })
 })
 
-describe('QUICK_STEPS_PERCENT_PER_LEVEL', () => {
-  it('is a small positive percent bonus per level', () => {
-    expect(QUICK_STEPS_PERCENT_PER_LEVEL).toBeGreaterThan(0)
+describe('computeEdgeMotion', () => {
+  const vMax = 10
+  const acceleration = 5
+
+  it('mustStop: a long edge accelerates to vMax, cruises, then decelerates to a full stop', () => {
+    // accel distance: vMax²/2a = 10, decel distance: 10, cruise: 80 at vMax=10
+    // accel time: vMax/a = 2s, decel time: 2s, cruise time: 80/10 = 8s -> 12s total
+    const distance = 100
+    const { travelMs, exitVelocity } = computeEdgeMotion(0, vMax, acceleration, distance, true)
+    expect(exitVelocity).toBe(0)
+    expect(travelMs).toBe(12_000)
+  })
+
+  it('mustStop: a short edge never reaches vMax (triangular profile), still stops exactly at the end', () => {
+    const distance = 4 // peak = sqrt((2*5*4 + 0)/2) = sqrt(20) ≈ 4.472, well under vMax
+    const { travelMs, exitVelocity } = computeEdgeMotion(0, vMax, acceleration, distance, true)
+    const peak = Math.sqrt((2 * acceleration * distance) / 2)
+    expect(peak).toBeLessThan(vMax)
+    expect(exitVelocity).toBe(0)
+    expect(travelMs).toBeCloseTo(((2 * peak) / acceleration) * 1000, 0)
+  })
+
+  it('mustStop: a nonzero entry speed shortens the crossing versus starting from rest', () => {
+    const distance = 50
+    const fromRest = computeEdgeMotion(0, vMax, acceleration, distance, true)
+    const alreadyCruising = computeEdgeMotion(vMax, vMax, acceleration, distance, true)
+    expect(alreadyCruising.travelMs).toBeLessThan(fromRest.travelMs)
+    expect(alreadyCruising.exitVelocity).toBe(0)
+  })
+
+  it('!mustStop: a long edge reaches and holds vMax, carrying that speed on', () => {
+    const distance = 100
+    const { exitVelocity } = computeEdgeMotion(0, vMax, acceleration, distance, false)
+    expect(exitVelocity).toBe(vMax)
+  })
+
+  it('!mustStop: a short edge is still accelerating at the far end, carrying a lower exit speed on', () => {
+    const distance = 2 // accelDistance to vMax=10 is 10, so 2 is still mid-ramp
+    const { exitVelocity } = computeEdgeMotion(0, vMax, acceleration, distance, false)
+    expect(exitVelocity).toBeGreaterThan(0)
+    expect(exitVelocity).toBeLessThan(vMax)
+    expect(exitVelocity).toBeCloseTo(Math.sqrt(2 * acceleration * distance))
+  })
+
+  it('!mustStop: entering already at vMax just cruises the whole distance', () => {
+    const distance = 50
+    const { travelMs, exitVelocity } = computeEdgeMotion(vMax, vMax, acceleration, distance, false)
+    expect(exitVelocity).toBe(vMax)
+    expect(travelMs).toBe((distance / vMax) * 1000)
+  })
+
+  it('never drops below the minimum tick interval, however short the edge', () => {
+    const { travelMs } = computeEdgeMotion(0, vMax, acceleration, 0.0001, true)
+    expect(travelMs).toBe(PRODUCTION_CONFIG.speed.minTickIntervalMs)
+  })
+
+  it('mustStop, entry 0: the turnaround (accelEndMs === decelStartMs) sits at exactly half the distance', () => {
+    const distance = 4 // triangular — never reaches vMax (see the test above)
+    const motion = computeEdgeMotion(0, vMax, acceleration, distance, true)
+    expect(motion.decelStartMs).toBe(motion.accelEndMs)
+    // Equal accel/decel times from rest means equal accel/decel distances too.
+    expect(motion.accelEndMs).toBeCloseTo(motion.travelMs / 2, -1)
+  })
+
+  it('mustStop, nonzero entry too fast to accelerate further: brakes immediately and still stops exactly in time', () => {
+    const entry = vMax // 10
+    const distance = entry ** 2 / (2 * acceleration) // exactly the distance needed to brake to 0
+    const motion = computeEdgeMotion(entry, vMax, acceleration, distance, true)
+    expect(motion.accelEndMs).toBe(0)
+    expect(motion.decelStartMs).toBe(0)
+    expect(motion.exitVelocity).toBe(0)
+    expect(motion.travelMs).toBeCloseTo((entry / acceleration) * 1000, 0)
+  })
+
+  it('mustStop, genuine over-speed: too fast to fully stop within the edge, arrives with a nonzero residual instead of a nonsensical result', () => {
+    const entry = vMax // 10
+    const distance = 5 // less than the 10 needed to brake fully from entry=10 at a=5
+    const motion = computeEdgeMotion(entry, vMax, acceleration, distance, true)
+    expect(motion.decelStartMs).toBe(0)
+    expect(motion.exitVelocity).toBeGreaterThan(0)
+    expect(motion.exitVelocity).toBeLessThan(entry)
+    expect(motion.exitVelocity).toBeCloseTo(Math.sqrt(entry ** 2 - 2 * acceleration * distance))
+    expect(motion.travelMs).toBeGreaterThan(0)
+    expect(Number.isFinite(motion.travelMs)).toBe(true)
+  })
+
+  it('!mustStop: never brakes, so decelStartMs is null', () => {
+    const motion = computeEdgeMotion(0, vMax, acceleration, 100, false)
+    expect(motion.decelStartMs).toBeNull()
+  })
+})
+
+describe('computeNextEdgeMotion', () => {
+  it('matches computeEdgeMotion fed the speed of light and computeAcceleration directly', () => {
+    const progression = { momentumOwned: true, elapsedSecondsThisRun: 30, thrustersLevel: 3 }
+    const v0 = 1.5
+    const mustStop = true
+    const expected = computeEdgeMotion(
+      v0,
+      PRODUCTION_CONFIG.speed.baseSpeedOfLight,
+      computeAcceleration(progression.thrustersLevel, progression.momentumOwned, progression.elapsedSecondsThisRun),
+      TEST_EDGE_WEIGHT,
+      mustStop,
+    )
+    const actual = computeNextEdgeMotion(progression, v0, TEST_EDGE_WEIGHT, mustStop)
+    expect(actual).toEqual(expected)
+  })
+
+  it('defaults speedOfLight to PRODUCTION_CONFIG.speed.baseSpeedOfLight', () => {
+    const progression = { momentumOwned: false, elapsedSecondsThisRun: 0 }
+    const withDefault = computeNextEdgeMotion(progression, 0, TEST_EDGE_WEIGHT, true)
+    const withExplicitBase = computeNextEdgeMotion(progression, 0, TEST_EDGE_WEIGHT, true, PRODUCTION_CONFIG, PRODUCTION_CONFIG.speed.baseSpeedOfLight)
+    expect(withDefault).toEqual(withExplicitBase)
+  })
+
+  it('the speed of light is the vMax — a raised value (FTL) raises cruise speed on a long edge', () => {
+    // Long enough that the walker fully ramps up to vMax either way.
+    const progression = { momentumOwned: false, elapsedSecondsThisRun: 0, thrustersLevel: 40 }
+    const longEdgeWeight = 100_000
+    const base = computeNextEdgeMotion(progression, 0, longEdgeWeight, false)
+    expect(base.peakVelocity).toBe(PRODUCTION_CONFIG.speed.baseSpeedOfLight)
+
+    const raised = computeNextEdgeMotion(progression, 0, longEdgeWeight, false, PRODUCTION_CONFIG, PRODUCTION_CONFIG.speed.baseSpeedOfLight * 2)
+    expect(raised.peakVelocity).toBe(PRODUCTION_CONFIG.speed.baseSpeedOfLight * 2)
+    expect(raised.travelMs).toBeLessThan(base.travelMs)
+  })
+
+  it('a short edge never reaches the speed of light — acceleration-limited, so raising c changes nothing', () => {
+    const progression = { momentumOwned: false, elapsedSecondsThisRun: 0 }
+    const below = computeNextEdgeMotion(progression, 0, TEST_EDGE_WEIGHT, true)
+    expect(below.peakVelocity).toBeLessThan(PRODUCTION_CONFIG.speed.baseSpeedOfLight)
+    const hugeC = computeNextEdgeMotion(progression, 0, TEST_EDGE_WEIGHT, true, PRODUCTION_CONFIG, PRODUCTION_CONFIG.speed.baseSpeedOfLight * 100)
+    expect(below).toEqual(hugeC)
+  })
+
+  it('both Thrusters and Momentum feed into the acceleration used for the motion profile', () => {
+    const noBonus = computeNextEdgeMotion({ momentumOwned: false, elapsedSecondsThisRun: 0, thrustersLevel: 0 }, 0, TEST_EDGE_WEIGHT, true)
+    const withThrusters = computeNextEdgeMotion({ momentumOwned: false, elapsedSecondsThisRun: 0, thrustersLevel: 5 }, 0, TEST_EDGE_WEIGHT, true)
+    const withMomentum = computeNextEdgeMotion({ momentumOwned: true, elapsedSecondsThisRun: 60, thrustersLevel: 0 }, 0, TEST_EDGE_WEIGHT, true)
+    expect(withThrusters.travelMs).toBeLessThan(noBonus.travelMs)
+    expect(withMomentum.travelMs).toBeLessThan(noBonus.travelMs)
+  })
+})
+
+describe('velocityAtElapsedMs', () => {
+  const vMax = 10
+  const acceleration = 5
+
+  it('tracks the accelerate/cruise/decelerate phases of a long mustStop edge', () => {
+    const motion = computeEdgeMotion(0, vMax, acceleration, 100, true) // accel 2s, cruise 8s, decel 2s
+    expect(velocityAtElapsedMs(motion, 0, acceleration)).toBeCloseTo(0)
+    expect(velocityAtElapsedMs(motion, 1000, acceleration)).toBeCloseTo(5) // mid accel
+    expect(velocityAtElapsedMs(motion, 2000, acceleration)).toBeCloseTo(10) // reaches vMax
+    expect(velocityAtElapsedMs(motion, 6000, acceleration)).toBeCloseTo(10) // cruising
+    expect(velocityAtElapsedMs(motion, 11000, acceleration)).toBeCloseTo(5) // mid decel
+    expect(velocityAtElapsedMs(motion, motion.travelMs, acceleration)).toBeCloseTo(0) // arrival
+  })
+
+  it('stays at peakVelocity for the rest of a !mustStop edge once accelerating is done', () => {
+    const motion = computeEdgeMotion(0, vMax, acceleration, 100, false)
+    expect(velocityAtElapsedMs(motion, motion.accelEndMs, acceleration)).toBeCloseTo(vMax)
+    expect(velocityAtElapsedMs(motion, motion.travelMs, acceleration)).toBeCloseTo(vMax)
+  })
+
+  it('clamps elapsed time outside [0, travelMs]', () => {
+    const motion = computeEdgeMotion(0, vMax, acceleration, 100, true)
+    expect(velocityAtElapsedMs(motion, -1000, acceleration)).toBeCloseTo(0)
+    expect(velocityAtElapsedMs(motion, motion.travelMs + 10_000, acceleration)).toBeCloseTo(0)
   })
 })
 
 describe('computeDiscoverWaitMs', () => {
   it('is the base wait at level 0', () => {
-    expect(computeDiscoverWaitMs(0)).toBe(DISCOVER_WAIT_BASE_MS)
+    expect(computeDiscoverWaitMs(0)).toBe(PRODUCTION_CONFIG.speed.discoverWaitBaseMs)
   })
 
   it('shrinks by the compounding percent per level, uncapped, never reaching zero', () => {
     const level1 = computeDiscoverWaitMs(1)
     const level2 = computeDiscoverWaitMs(2)
-    expect(level1).toBeCloseTo(DISCOVER_WAIT_BASE_MS * (1 - DISCOVER_WAIT_PERCENT_PER_LEVEL))
+    expect(level1).toBeCloseTo(PRODUCTION_CONFIG.speed.discoverWaitBaseMs * (1 - PRODUCTION_CONFIG.upgrades.discoverWait.percentPerLevel))
     expect(level2).toBeLessThan(level1)
     expect(computeDiscoverWaitMs(100)).toBeGreaterThan(0)
   })

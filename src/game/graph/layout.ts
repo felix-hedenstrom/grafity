@@ -1,3 +1,4 @@
+import { PRODUCTION_CONFIG } from '../config/production'
 import type { Graph } from './types'
 import { getEdgeWeight } from './types'
 
@@ -8,11 +9,19 @@ export interface GraphBounds {
   height: number
 }
 
-const BOUNDS_PADDING = 40
+/** Padding around the graph's node centers as a fraction of its shortest edge. Star glyphs scale
+ * with node spacing (GraphView's starScale), so padding must too — a flat constant gets dwarfed on
+ * high-level graphs and the edge beacons' glows get cropped at full zoom-out. 0.65 covers the
+ * worst case: a beacon's outer glow spans ~0.58 × minEdgeLength when zoom-out star growth maxes
+ * out (BEACON_RADIUS × spacingStarScale × MAX_STAR_ZOOM_GROWTH × the glow layer's 0.46 extent). */
+const BOUNDS_PAD_FRACTION = 0.65
+
+/** Fallback spacing for graphs with no edges, where no spacing can be measured. */
+const EDGELESS_SPACING = 40
 
 /** Shortest edge in the graph — the actual measured minimum spacing between adjacent nodes, used to keep both view padding and star rendering proportioned to how tightly packed the graph really is. */
 export function minEdgeLength(graph: Graph): number {
-  return graph.edges.length > 0 ? Math.min(...graph.edges.map((e) => getEdgeWeight(graph, e.source, e.target))) : BOUNDS_PADDING
+  return graph.edges.length > 0 ? Math.min(...graph.edges.map((e) => getEdgeWeight(graph, e.source, e.target))) : EDGELESS_SPACING
 }
 
 /**
@@ -21,15 +30,16 @@ export function minEdgeLength(graph: Graph): number {
  * the discovered subset would make the view rescale on every reveal, which
  * is exactly the kind of instability static positions were meant to fix.
  *
- * Padding is capped by the graph's own measured node spacing (its shortest edge) so a flat
- * BOUNDS_PADDING can't dominate a tiny early graph's view — on a small graph that padding would
- * otherwise be comparable to or bigger than the graph's actual content, reading as mostly empty
- * space around a tiny, over-zoomed cluster of nodes.
+ * Padding is proportional to the graph's own measured node spacing (its shortest edge), for the
+ * same reason stars are: both must stay in proportion to the layout at every level. Proportional
+ * padding stays below the shortest edge on tight early graphs (so it can't dominate a tiny graph's
+ * view as empty space) while growing with spread-out high-level ones (so the scaled-up beacon
+ * glyphs at the graph's edge aren't cropped at full zoom-out).
  */
 export function computeGraphBounds(graph: Graph): GraphBounds {
   const xs = graph.nodes.map((node) => node.x ?? 0)
   const ys = graph.nodes.map((node) => node.y ?? 0)
-  const padding = Math.min(BOUNDS_PADDING, minEdgeLength(graph))
+  const padding = minEdgeLength(graph) * BOUNDS_PAD_FRACTION
   const minX = Math.min(...xs) - padding
   const minY = Math.min(...ys) - padding
   const maxX = Math.max(...xs) + padding
@@ -37,7 +47,19 @@ export function computeGraphBounds(graph: Graph): GraphBounds {
   return { minX, minY, width: maxX - minX, height: maxY - minY }
 }
 
-/** Past this size (in layout units, same scale as node spacing), fitting the whole graph in view shrinks node circles to near-invisible dots — better to show a fixed-size window instead. */
+/**
+ * How many multiples of the reference spacing (PRODUCTION_CONFIG.graph.spacingAtReferenceCount) this graph's actual node
+ * spacing is — the single zoom knob that keeps the view scale-invariant across levels. Node
+ * spacing grows super-linearly with graph size (see generatePlanar's spacingScaleForNodeCount),
+ * while the view-size constants below are all tuned for a level-7 graph; multiplying them by this
+ * keeps the same number of stars (and the same star/ship proportions) on screen at every level.
+ * Floored at 1 so tiny or edge-less graphs keep the untuned, reference behavior.
+ */
+export function viewScale(graph: Graph): number {
+  return Math.max(1, minEdgeLength(graph) / PRODUCTION_CONFIG.graph.spacingAtReferenceCount)
+}
+
+/** Past this size (in layout units at reference spacing — multiplied by viewScale on real graphs), fitting the whole graph in view shrinks node circles to near-invisible dots — better to show a fixed-size window instead. */
 export const MAX_VIEW_SIZE = 1600
 /** Smallest the camera window ever shrinks to, even with no other walkers to fit in frame — keeps nodes a comfortable, legible size. Only used for the walker-proximity zoom (computeDynamicViewSize) and the walker scale it feeds into — NOT for padding a small whole-graph view, which uses MIN_GRAPH_VIEW_SIZE instead, since graph sizes now range far below this (level-7 graphs are far smaller than a few walkers' proximity window ever needs to be). */
 export const MIN_VIEW_SIZE = 500
@@ -49,6 +71,11 @@ export const MANUAL_MIN_VIEW_SIZE = 150
 export const MIN_GRAPH_VIEW_SIZE = 100
 /** How many of the main walker's nearest companions the camera tries to keep in frame alongside it. */
 const VISIBLE_OTHER_WALKERS = 2
+/** How many stars the camera window guarantees in frame around the main walker — the walker's own
+ * node plus this many nearest neighbors. A hard floor on window size computed from real node
+ * positions, because node density is deliberately uneven (generatePlanar's warp): keying the
+ * window to average spacing alone leaves the walker alone in frame in the sparse regions. */
+const VISIBLE_NEARBY_STARS = 4
 /** Multiplies the span needed to just barely fit the included walkers, so they land comfortably inside the window instead of right at its edge. */
 const SPAN_MARGIN = 1.4
 
@@ -60,12 +87,39 @@ const SPAN_MARGIN = 1.4
  * fit (no other walkers, or they're already close by), and never exceeds MAX_VIEW_SIZE even if
  * the nearest others are extremely far away.
  */
-export function computeDynamicViewSize(mainPos: { x: number; y: number }, otherPositions: { x: number; y: number }[]): number {
+export function computeDynamicViewSize(
+  mainPos: { x: number; y: number },
+  otherPositions: { x: number; y: number }[],
+  scale = 1,
+  graph?: Graph,
+): number {
   const nearest = [...otherPositions]
     .sort((a, b) => Math.hypot(a.x - mainPos.x, a.y - mainPos.y) - Math.hypot(b.x - mainPos.x, b.y - mainPos.y))
     .slice(0, VISIBLE_OTHER_WALKERS)
   const halfSpan = nearest.reduce((max, p) => Math.max(max, Math.abs(p.x - mainPos.x), Math.abs(p.y - mainPos.y)), 0)
-  return Math.min(MAX_VIEW_SIZE, Math.max(MIN_VIEW_SIZE, halfSpan * 2 * SPAN_MARGIN))
+  // halfSpan is measured in graph units so it scales with spacing on its own — only the min/max
+  // clamps are tuned for reference spacing and need the viewScale multiplier.
+  const walkerSize = Math.min(MAX_VIEW_SIZE * scale, Math.max(MIN_VIEW_SIZE * scale, halfSpan * 2 * SPAN_MARGIN))
+  // The nearby-stars floor deliberately sits OUTSIDE the max clamp: in the sparsest warped regions
+  // keeping ~5 stars in frame matters more than the comfortable zoom ceiling.
+  return Math.max(walkerSize, graph ? nearbyStarsViewSize(mainPos, graph) : 0)
+}
+
+/**
+ * Smallest window centered on `pos` that keeps the walker's own star plus its
+ * VISIBLE_NEARBY_STARS nearest neighbors in frame (with the same comfort margin as the walker
+ * span) — the "always at least ~5 stars on screen" guarantee, measured against the actual node
+ * layout rather than any average spacing, so it adapts to the deliberately uneven node density.
+ */
+export function nearbyStarsViewSize(pos: { x: number; y: number }, graph: Graph): number {
+  // Chebyshev distance, since the window that must contain a point is square.
+  const distances = graph.nodes
+    .map((n) => Math.max(Math.abs((n.x ?? 0) - pos.x), Math.abs((n.y ?? 0) - pos.y)))
+    .sort((a, b) => a - b)
+  // distances[0] is (near) zero — the walker's own node. Index VISIBLE_NEARBY_STARS is the
+  // farthest of the neighbors that must fit.
+  const halfSpan = distances[Math.min(VISIBLE_NEARBY_STARS, distances.length - 1)] ?? 0
+  return halfSpan * 2 * SPAN_MARGIN
 }
 
 /**
@@ -75,7 +129,9 @@ export function computeDynamicViewSize(mainPos: { x: number; y: number }, otherP
  * same coordinate units as positions, so capping the viewBox size is what keeps them a constant,
  * readable on-screen size regardless of how big the graph gets; each dimension is capped
  * independently so a graph that's only oversized in one direction doesn't get needlessly cropped
- * in the other, and the window is clamped so it never drifts past the graph's actual extent.
+ * in the other. The window deliberately is NOT clamped to the graph's extent — near a map edge
+ * it keeps the walker centered and shows empty space beyond the edge, rather than pinning to the
+ * boundary and letting the walker drift off-center.
  * `containerAspectRatio`, when given, then grows whichever axis is narrower relative to that
  * ratio so the viewBox fills the on-screen SVG box instead of being letterboxed by the default
  * `xMidYMid meet` scaling.
@@ -95,24 +151,11 @@ export function computeViewBounds(
   // Three cases: the graph is small enough to pad out to MIN_GRAPH_VIEW_SIZE (center on the
   // graph itself, so it gets even breathing room on all sides), it fits within maxSize as-is
   // (use its own bounds directly), or it's bigger than maxSize (window centered on the focus/walker).
-  const rawMinX = width > full.width ? full.minX + full.width / 2 - width / 2 : full.width <= maxSize ? full.minX : focusX - width / 2
-  const rawMinY = height > full.height ? full.minY + full.height / 2 - height / 2 : full.height <= maxSize ? full.minY : focusY - height / 2
-
-  const minX = width <= full.width ? Math.min(Math.max(rawMinX, full.minX), full.minX + full.width - width) : rawMinX
-  const minY = height <= full.height ? Math.min(Math.max(rawMinY, full.minY), full.minY + full.height - height) : rawMinY
+  const minX = width > full.width ? full.minX + full.width / 2 - width / 2 : full.width <= maxSize ? full.minX : focusX - width / 2
+  const minY = height > full.height ? full.minY + full.height / 2 - height / 2 : full.height <= maxSize ? full.minY : focusY - height / 2
 
   const bounds = { minX, minY, width, height }
-  return containerAspectRatio && containerAspectRatio > 0 ? expandToAspectRatio(bounds, full, containerAspectRatio) : bounds
-}
-
-/**
- * Where to put a window of `size` along one axis so it stays inside [fullMin, fullMin+fullSize]
- * when it fits, or centers on the full extent when it doesn't — the same clamp-or-center rule
- * computeViewBounds already applies per-axis when windowing a graph, reused here for the axis
- * that grows to correct the aspect ratio.
- */
-function clampOrCenterAxis(desiredMin: number, size: number, fullMin: number, fullSize: number): number {
-  return size <= fullSize ? Math.min(Math.max(desiredMin, fullMin), fullMin + fullSize - size) : fullMin + fullSize / 2 - size / 2
+  return containerAspectRatio && containerAspectRatio > 0 ? expandToAspectRatio(bounds, containerAspectRatio) : bounds
 }
 
 /**
@@ -121,21 +164,21 @@ function clampOrCenterAxis(desiredMin: number, size: number, fullMin: number, fu
  * doesn't match the SVG's rendered box gets letterboxed by the default `xMidYMid meet` scaling —
  * shrunk to fit the tighter axis, with the other axis padded by dead empty space. This expands in
  * graph space instead, so the previously-binding axis keeps its exact size (same on-screen zoom)
- * while the other axis just reveals more of the world around the same center. The grown axis may
- * end up larger than maxSize/MAX_VIEW_SIZE — that's expected and correct, since it reveals more
- * world at an unchanged scale rather than changing the scale; don't cap it back down.
+ * while the other axis just reveals more of the world around the same center — the grown axis
+ * keeps the window's center (the walker, when windowed) rather than clamping back inside the
+ * graph's extent. The grown axis may end up larger than maxSize/MAX_VIEW_SIZE — that's expected
+ * and correct, since it reveals more world at an unchanged scale rather than changing the scale;
+ * don't cap it back down.
  */
-function expandToAspectRatio(bounds: GraphBounds, full: GraphBounds, aspectRatio: number): GraphBounds {
+function expandToAspectRatio(bounds: GraphBounds, aspectRatio: number): GraphBounds {
   const currentRatio = bounds.width / bounds.height
   if (currentRatio < aspectRatio) {
     const width = bounds.height * aspectRatio
-    const centerX = bounds.minX + bounds.width / 2
-    return { ...bounds, width, minX: clampOrCenterAxis(centerX - width / 2, width, full.minX, full.width) }
+    return { ...bounds, width, minX: bounds.minX + bounds.width / 2 - width / 2 }
   }
   if (currentRatio > aspectRatio) {
     const height = bounds.width / aspectRatio
-    const centerY = bounds.minY + bounds.height / 2
-    return { ...bounds, height, minY: clampOrCenterAxis(centerY - height / 2, height, full.minY, full.height) }
+    return { ...bounds, height, minY: bounds.minY + bounds.height / 2 - height / 2 }
   }
   return bounds
 }

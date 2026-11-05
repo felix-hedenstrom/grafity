@@ -53,6 +53,23 @@
   background: var(--code-bg);
   text-align: center;
   min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/** Same shape as .box, but purple — a visible preview of the Nebula payout right on the main screen, not just inside the shop. */
+.prestigeBox {
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: var(--accent-bg);
+  text-align: center;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 
 .boxHeading {
@@ -68,15 +85,6 @@
   font-weight: 600;
   color: var(--text-h);
   font-family: var(--mono);
-}
-
-.boxBreakdown {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--text);
-  opacity: 0.8;
-  font-family: var(--mono);
-  line-height: 1.5;
 }
 
 .iconRow {
@@ -103,4 +111,22 @@
 .iconButton:hover {
   background: var(--accent-bg);
   border-color: var(--accent-border);
+}
+
+/** Purple at rest, not just on hover — marks the Prestige Shop as a distinct, special mechanic from the plain ?/⚙ icon buttons elsewhere in the HUD. */
+.prestigeButton {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent);
+  color: var(--bg);
+  cursor: pointer;
+}
+
+.prestigeButton:hover {
+  box-shadow: 0 0 8px var(--accent);
 }

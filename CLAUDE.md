@@ -34,4 +34,4 @@ verification — never touch the user's own processes.
 ## Walker naming convention
 
 - **Spaceship** — the main walker (`walkers[0]`, rendered with `variant="main"` in `WalkerToken`). The one the camera follows; its arrival at the goal ends the run.
-- **UFO** — every other walker: extra searchers and Bidirectional Search's reverse half (rendered with `variant="forward"`/`"reverse"`, the tinted sub-ship shape). Code and upgrade copy should call these "UFOs," not "other searchers" or "non-main walkers."
+- **UFO** — every other walker: extra searchers, including Reverse Beacon's exit-side searchers (`origin: 'goal'`, rendered with `variant="forward"`/`"reverse"`, the tinted sub-ship shape). Code and upgrade copy should call these "UFOs," not "other searchers" or "non-main walkers."

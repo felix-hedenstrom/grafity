@@ -30,8 +30,8 @@ function weightedForkGraph(): Graph {
 }
 
 describe('dijkstra', () => {
-  it('has a 1x memory multiplier', () => {
-    expect(dijkstra.memoryMultiplier).toBe(1)
+  it('has a 2x memory multiplier', () => {
+    expect(dijkstra.memoryMultiplier).toBe(2)
   })
 
   it('prefers the cheaper-weight route over the fewer-hops-but-pricier one', () => {

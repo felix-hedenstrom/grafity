@@ -121,20 +121,6 @@ describe('generatePlanarGraph', () => {
     }
   })
 
-  it('spreads nodes farther apart when Clarity is enabled, without changing the node count', () => {
-    const base = generatePlanarGraph(50, mulberry32(11), false)
-    const withClarity = generatePlanarGraph(50, mulberry32(11), true)
-
-    function spanOf(graph: typeof base) {
-      const xs = graph.nodes.map((n) => n.x ?? 0)
-      const ys = graph.nodes.map((n) => n.y ?? 0)
-      return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys))
-    }
-
-    expect(withClarity.nodes).toHaveLength(base.nodes.length)
-    expect(spanOf(withClarity)).toBeGreaterThan(spanOf(base))
-  })
-
   it('is deterministic for a given seed', () => {
     const a = generatePlanarGraph(30, mulberry32(77))
     const b = generatePlanarGraph(30, mulberry32(77))

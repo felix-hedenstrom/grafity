@@ -1,29 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createCurrency, earn } from '../game/currency/rules'
-import { CLARITY_MAX_LEVEL } from '../game/graph/generatePlanar'
-import {
-  AMPLIFIER_UPGRADE_INFO,
-  CLARITY_UPGRADE,
-  DEEP_MEMORY_UPGRADE_INFO,
-  DEFAULT_STRATEGY_ID,
-  DISCOVERY_BONUS_UPGRADE_INFO,
-  EXIT_BONUS_UPGRADE_INFO,
-  EXPANSION_UPGRADE_INFO,
-  INSIGHT_MULTIPLIER_UPGRADE_INFO,
-  MAIN_WALKER_SPEED_UPGRADE_INFO,
-  MINIMAP_UPGRADE,
-  MOMENTUM_UPGRADE_INFO,
-  MUTEX_UPGRADE,
-  NODE_MEMORY_UPGRADE_INFO,
-  QUICK_STEPS_UPGRADE_INFO,
-  REVISIT_BONUS_UPGRADE_INFO,
-  SEARCHER_UPGRADE_INFO,
-  UPGRADES,
-} from '../game/upgrades/definitions'
+import { PRODUCTION_CONFIG } from '../game/config/production'
+import { DEFAULT_STRATEGY_ID, UPGRADE_INFOS, UPGRADES } from '../game/upgrades/definitions'
 import { costForLevel } from '../game/upgrades/scaling'
-import { STARTING_GRAPH_NODE_COUNT, useProgressionStore } from './useProgressionStore'
+import { usePrestigeStore } from './usePrestigeStore'
+import { STARTING_GRAPH_NODE_COUNT, STARTING_MEMORY_LEVEL, useProgressionStore } from './useProgressionStore'
 
-/** Above every upgrade's minLevel (Bidirectional's 200 is the highest) — clears the level gate so tests unrelated to gating aren't blocked by it. */
+/** Above every upgrade's minLevel (Swarm Search's 550 is the highest) — clears the level gate so tests unrelated to gating aren't blocked by it. */
 const LEVEL_GATE_CLEARED = 10_000
 
 beforeEach(() => {
@@ -33,22 +16,18 @@ beforeEach(() => {
     activeStrategyId: DEFAULT_STRATEGY_ID,
     graphNodeCount: STARTING_GRAPH_NODE_COUNT,
     highestGraphNodeCount: STARTING_GRAPH_NODE_COUNT,
-    momentumLevel: 0,
+    momentumOwned: false,
     memoryLevel: 0,
     expansionLevel: 0,
     amplifierLevel: 0,
     deepMemoryLevel: 0,
-    quickStepsLevel: 0,
     searcherLevel: 0,
-    mainWalkerSpeedLevel: 0,
-    clarityLevel: 0,
     discoveryBonusLevel: 0,
     revisitBonusLevel: 0,
     exitBonusLevel: 0,
     insightMultiplierLevel: 0,
-    minimapEnabled: true,
-    mutexEnabled: false,
   })
+  usePrestigeStore.getState().resetPrestige()
 })
 
 describe('useProgressionStore', () => {
@@ -100,17 +79,14 @@ describe('useProgressionStore', () => {
   })
 
   describe.each([
-    ['purchaseMomentumLevel', 'momentumLevel', MOMENTUM_UPGRADE_INFO] as const,
-    ['purchaseMemoryLevel', 'memoryLevel', NODE_MEMORY_UPGRADE_INFO] as const,
-    ['purchaseExpansionLevel', 'expansionLevel', EXPANSION_UPGRADE_INFO] as const,
-    ['purchaseAmplifierLevel', 'amplifierLevel', AMPLIFIER_UPGRADE_INFO] as const,
-    ['purchaseDeepMemoryLevel', 'deepMemoryLevel', DEEP_MEMORY_UPGRADE_INFO] as const,
-    ['purchaseQuickStepsLevel', 'quickStepsLevel', QUICK_STEPS_UPGRADE_INFO] as const,
-    ['purchaseSearcherLevel', 'searcherLevel', SEARCHER_UPGRADE_INFO] as const,
-    ['purchaseDiscoveryBonusLevel', 'discoveryBonusLevel', DISCOVERY_BONUS_UPGRADE_INFO] as const,
-    ['purchaseRevisitBonusLevel', 'revisitBonusLevel', REVISIT_BONUS_UPGRADE_INFO] as const,
-    ['purchaseExitBonusLevel', 'exitBonusLevel', EXIT_BONUS_UPGRADE_INFO] as const,
-    ['purchaseInsightMultiplierLevel', 'insightMultiplierLevel', INSIGHT_MULTIPLIER_UPGRADE_INFO] as const,
+    ['purchaseMemoryLevel', 'memoryLevel', UPGRADE_INFOS.nodeMemory] as const,
+    ['purchaseExpansionLevel', 'expansionLevel', UPGRADE_INFOS.expansion] as const,
+    ['purchaseAmplifierLevel', 'amplifierLevel', UPGRADE_INFOS.amplifier] as const,
+    ['purchaseDeepMemoryLevel', 'deepMemoryLevel', UPGRADE_INFOS.deepMemory] as const,
+    ['purchaseDiscoveryBonusLevel', 'discoveryBonusLevel', UPGRADE_INFOS.discoveryBonus] as const,
+    ['purchaseRevisitBonusLevel', 'revisitBonusLevel', UPGRADE_INFOS.revisitBonus] as const,
+    ['purchaseExitBonusLevel', 'exitBonusLevel', UPGRADE_INFOS.exitBonus] as const,
+    ['purchaseInsightMultiplierLevel', 'insightMultiplierLevel', UPGRADE_INFOS.insightMultiplier] as const,
   ])('%s', (actionName, levelField, info) => {
     it('stacks levels, deducting a geometrically increasing cost each time', () => {
       const level0Cost = costForLevel(info, 0)
@@ -165,9 +141,9 @@ describe('useProgressionStore', () => {
 
   describe('purchaseMemoryLevel', () => {
     it('is purchasable at the very start of a fresh run, with no level grind required', () => {
-      expect(NODE_MEMORY_UPGRADE_INFO.minLevel).toBeLessThanOrEqual(STARTING_GRAPH_NODE_COUNT)
+      expect(UPGRADE_INFOS.nodeMemory.minLevel).toBeLessThanOrEqual(STARTING_GRAPH_NODE_COUNT)
       useProgressionStore.setState({
-        currency: earn(createCurrency(), costForLevel(NODE_MEMORY_UPGRADE_INFO, 0)),
+        currency: earn(createCurrency(), costForLevel(UPGRADE_INFOS.nodeMemory, 0)),
         highestGraphNodeCount: STARTING_GRAPH_NODE_COUNT,
       })
 
@@ -176,142 +152,30 @@ describe('useProgressionStore', () => {
     })
   })
 
-  describe('purchaseMainWalkerSpeedLevel', () => {
-    it('refuses while Extra Searcher is unowned, even with enough currency and level', () => {
+  describe('purchaseSearcherLevel', () => {
+    it('refuses while Unlock UFO is unowned, even with enough currency and level', () => {
       useProgressionStore.setState({
-        currency: earn(createCurrency(), costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 0)),
+        currency: earn(createCurrency(), costForLevel(UPGRADE_INFOS.searcher, 0)),
         highestGraphNodeCount: LEVEL_GATE_CLEARED,
-        searcherLevel: 0,
       })
 
-      expect(useProgressionStore.getState().purchaseMainWalkerSpeedLevel()).toBe(false)
-      expect(useProgressionStore.getState().mainWalkerSpeedLevel).toBe(0)
+      expect(useProgressionStore.getState().purchaseSearcherLevel()).toBe(false)
+      expect(useProgressionStore.getState().searcherLevel).toBe(0)
     })
 
-    it('stacks levels once Extra Searcher is owned, deducting a geometrically increasing cost each time', () => {
-      const level0Cost = costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 0)
-      const level1Cost = costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 1)
+    it('stacks levels once Unlock UFO is owned, deducting a geometrically increasing cost each time', () => {
+      usePrestigeStore.setState({ unlockUfoOwned: true })
+      const level0Cost = costForLevel(UPGRADE_INFOS.searcher, 0)
+      const level1Cost = costForLevel(UPGRADE_INFOS.searcher, 1)
       useProgressionStore.setState({
         currency: earn(createCurrency(), level0Cost + level1Cost),
         highestGraphNodeCount: LEVEL_GATE_CLEARED,
-        searcherLevel: 1,
       })
 
-      expect(useProgressionStore.getState().purchaseMainWalkerSpeedLevel()).toBe(true)
-      expect(useProgressionStore.getState().mainWalkerSpeedLevel).toBe(1)
-      expect(useProgressionStore.getState().purchaseMainWalkerSpeedLevel()).toBe(true)
-      expect(useProgressionStore.getState().mainWalkerSpeedLevel).toBe(2)
-    })
-
-    it('refuses the first purchase below its minLevel requirement even with Extra Searcher owned', () => {
-      useProgressionStore.setState({
-        currency: earn(createCurrency(), costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 0)),
-        highestGraphNodeCount: MAIN_WALKER_SPEED_UPGRADE_INFO.minLevel - 1,
-        searcherLevel: 1,
-      })
-
-      expect(useProgressionStore.getState().purchaseMainWalkerSpeedLevel()).toBe(false)
-      expect(useProgressionStore.getState().mainWalkerSpeedLevel).toBe(0)
-    })
-  })
-
-  describe('purchaseClarity', () => {
-    it('jumps straight to CLARITY_MAX_LEVEL on purchase, a one-time buy rather than a stacking level', () => {
-      useProgressionStore.setState({
-        currency: earn(createCurrency(), CLARITY_UPGRADE.cost),
-        highestGraphNodeCount: LEVEL_GATE_CLEARED,
-      })
-
-      expect(useProgressionStore.getState().purchaseClarity()).toBe(true)
-
-      const state = useProgressionStore.getState()
-      expect(state.clarityLevel).toBe(CLARITY_MAX_LEVEL)
-      expect(state.currency.amount).toBe(0)
-    })
-
-    it('refuses a second purchase once already owned', () => {
-      useProgressionStore.setState({
-        currency: earn(createCurrency(), CLARITY_UPGRADE.cost * 2),
-        highestGraphNodeCount: LEVEL_GATE_CLEARED,
-      })
-      useProgressionStore.getState().purchaseClarity()
-
-      expect(useProgressionStore.getState().purchaseClarity()).toBe(false)
-      expect(useProgressionStore.getState().clarityLevel).toBe(CLARITY_MAX_LEVEL) // unchanged, not doubled
-    })
-
-    it('refuses below its level requirement, even with enough currency', () => {
-      useProgressionStore.setState({
-        currency: earn(createCurrency(), CLARITY_UPGRADE.cost),
-        highestGraphNodeCount: CLARITY_UPGRADE.minLevel - 1,
-      })
-
-      expect(useProgressionStore.getState().purchaseClarity()).toBe(false)
-      expect(useProgressionStore.getState().clarityLevel).toBe(0)
-    })
-  })
-
-  describe('purchaseMinimap / toggleMinimap', () => {
-    it('adds minimap to purchasedUpgradeIds on purchase, and refuses a second purchase', () => {
-      useProgressionStore.setState({
-        currency: earn(createCurrency(), MINIMAP_UPGRADE.cost),
-        highestGraphNodeCount: LEVEL_GATE_CLEARED,
-      })
-
-      expect(useProgressionStore.getState().purchaseMinimap()).toBe(true)
-      expect(useProgressionStore.getState().purchasedUpgradeIds).toContain(MINIMAP_UPGRADE.id)
-
-      expect(useProgressionStore.getState().purchaseMinimap()).toBe(false)
-    })
-
-    it('refuses below its level requirement, even with enough currency', () => {
-      useProgressionStore.setState({
-        currency: earn(createCurrency(), MINIMAP_UPGRADE.cost),
-        highestGraphNodeCount: MINIMAP_UPGRADE.minLevel - 1,
-      })
-
-      expect(useProgressionStore.getState().purchaseMinimap()).toBe(false)
-      expect(useProgressionStore.getState().purchasedUpgradeIds).not.toContain(MINIMAP_UPGRADE.id)
-    })
-
-    it('toggleMinimap flips minimapEnabled back and forth, independent of ownership', () => {
-      const before = useProgressionStore.getState().minimapEnabled
-      useProgressionStore.getState().toggleMinimap()
-      expect(useProgressionStore.getState().minimapEnabled).toBe(!before)
-      useProgressionStore.getState().toggleMinimap()
-      expect(useProgressionStore.getState().minimapEnabled).toBe(before)
-    })
-  })
-
-  describe('purchaseMutex / toggleMutex', () => {
-    it('adds mutex to purchasedUpgradeIds on purchase, and refuses a second purchase', () => {
-      useProgressionStore.setState({
-        currency: earn(createCurrency(), MUTEX_UPGRADE.cost),
-        highestGraphNodeCount: LEVEL_GATE_CLEARED,
-      })
-
-      expect(useProgressionStore.getState().purchaseMutex()).toBe(true)
-      expect(useProgressionStore.getState().purchasedUpgradeIds).toContain(MUTEX_UPGRADE.id)
-
-      expect(useProgressionStore.getState().purchaseMutex()).toBe(false)
-    })
-
-    it('refuses below its level requirement, even with enough currency', () => {
-      useProgressionStore.setState({
-        currency: earn(createCurrency(), MUTEX_UPGRADE.cost),
-        highestGraphNodeCount: MUTEX_UPGRADE.minLevel - 1,
-      })
-
-      expect(useProgressionStore.getState().purchaseMutex()).toBe(false)
-      expect(useProgressionStore.getState().purchasedUpgradeIds).not.toContain(MUTEX_UPGRADE.id)
-    })
-
-    it('toggleMutex flips mutexEnabled back and forth, independent of ownership', () => {
-      const before = useProgressionStore.getState().mutexEnabled
-      useProgressionStore.getState().toggleMutex()
-      expect(useProgressionStore.getState().mutexEnabled).toBe(!before)
-      useProgressionStore.getState().toggleMutex()
-      expect(useProgressionStore.getState().mutexEnabled).toBe(before)
+      expect(useProgressionStore.getState().purchaseSearcherLevel()).toBe(true)
+      expect(useProgressionStore.getState().searcherLevel).toBe(1)
+      expect(useProgressionStore.getState().purchaseSearcherLevel()).toBe(true)
+      expect(useProgressionStore.getState().searcherLevel).toBe(2)
     })
   })
 
@@ -400,43 +264,35 @@ describe('useProgressionStore', () => {
 
   it('resetProgress restores currency, upgrades, strategy, levels, and every repeatable level to their starting values', () => {
     const upgrade = UPGRADES[0]
+    usePrestigeStore.setState({ unlockUfoOwned: true })
     useProgressionStore.setState({
       currency: earn(
         createCurrency(),
         upgrade.cost +
-          costForLevel(MOMENTUM_UPGRADE_INFO, 0) +
-          costForLevel(NODE_MEMORY_UPGRADE_INFO, 0) +
-          costForLevel(EXPANSION_UPGRADE_INFO, 0) +
-          costForLevel(AMPLIFIER_UPGRADE_INFO, 0) +
-          costForLevel(DEEP_MEMORY_UPGRADE_INFO, 0) +
-          costForLevel(QUICK_STEPS_UPGRADE_INFO, 0) +
-          costForLevel(SEARCHER_UPGRADE_INFO, 0) +
-          costForLevel(MAIN_WALKER_SPEED_UPGRADE_INFO, 0) +
-          costForLevel(DISCOVERY_BONUS_UPGRADE_INFO, 0) +
-          costForLevel(REVISIT_BONUS_UPGRADE_INFO, 0) +
-          costForLevel(EXIT_BONUS_UPGRADE_INFO, 0) +
-          costForLevel(INSIGHT_MULTIPLIER_UPGRADE_INFO, 0) +
-          CLARITY_UPGRADE.cost +
-          MINIMAP_UPGRADE.cost,
+          PRODUCTION_CONFIG.upgrades.momentum.cost +
+          costForLevel(UPGRADE_INFOS.nodeMemory, 0) +
+          costForLevel(UPGRADE_INFOS.expansion, 0) +
+          costForLevel(UPGRADE_INFOS.amplifier, 0) +
+          costForLevel(UPGRADE_INFOS.deepMemory, 0) +
+          costForLevel(UPGRADE_INFOS.searcher, 0) +
+          costForLevel(UPGRADE_INFOS.discoveryBonus, 0) +
+          costForLevel(UPGRADE_INFOS.revisitBonus, 0) +
+          costForLevel(UPGRADE_INFOS.exitBonus, 0) +
+          costForLevel(UPGRADE_INFOS.insightMultiplier, 0),
       ),
       highestGraphNodeCount: LEVEL_GATE_CLEARED,
     })
     useProgressionStore.getState().purchaseUpgrade(upgrade.id)
-    useProgressionStore.getState().purchaseMomentumLevel()
+    useProgressionStore.getState().purchaseMomentum()
     useProgressionStore.getState().purchaseMemoryLevel()
     useProgressionStore.getState().purchaseExpansionLevel()
     useProgressionStore.getState().purchaseAmplifierLevel()
     useProgressionStore.getState().purchaseDeepMemoryLevel()
-    useProgressionStore.getState().purchaseQuickStepsLevel()
     useProgressionStore.getState().purchaseSearcherLevel()
-    useProgressionStore.getState().purchaseMainWalkerSpeedLevel()
     useProgressionStore.getState().purchaseDiscoveryBonusLevel()
     useProgressionStore.getState().purchaseRevisitBonusLevel()
     useProgressionStore.getState().purchaseExitBonusLevel()
     useProgressionStore.getState().purchaseInsightMultiplierLevel()
-    useProgressionStore.getState().purchaseClarity()
-    useProgressionStore.getState().purchaseMinimap()
-    useProgressionStore.getState().toggleMinimap() // now false, to confirm reset restores the default (true)
     useProgressionStore.getState().growGraph()
 
     useProgressionStore.getState().resetProgress()
@@ -447,19 +303,154 @@ describe('useProgressionStore', () => {
     expect(state.activeStrategyId).toBe(DEFAULT_STRATEGY_ID)
     expect(state.graphNodeCount).toBe(STARTING_GRAPH_NODE_COUNT)
     expect(state.highestGraphNodeCount).toBe(STARTING_GRAPH_NODE_COUNT)
-    expect(state.momentumLevel).toBe(0)
-    expect(state.memoryLevel).toBe(0)
+    expect(state.momentumOwned).toBe(false)
+    expect(state.memoryLevel).toBe(STARTING_MEMORY_LEVEL)
     expect(state.expansionLevel).toBe(0)
     expect(state.amplifierLevel).toBe(0)
     expect(state.deepMemoryLevel).toBe(0)
-    expect(state.quickStepsLevel).toBe(0)
     expect(state.searcherLevel).toBe(0)
-    expect(state.mainWalkerSpeedLevel).toBe(0)
     expect(state.discoveryBonusLevel).toBe(0)
     expect(state.revisitBonusLevel).toBe(0)
     expect(state.exitBonusLevel).toBe(0)
     expect(state.insightMultiplierLevel).toBe(0)
-    expect(state.clarityLevel).toBe(0)
-    expect(state.minimapEnabled).toBe(true)
+  })
+
+  describe('prestige', () => {
+    it('pays out Nebulas via usePrestigeStore based on highestGraphNodeCount, then resets like resetProgress', () => {
+      usePrestigeStore.setState({ unlockUfoOwned: true })
+      useProgressionStore.setState({
+        currency: earn(createCurrency(), 1000),
+        highestGraphNodeCount: 107,
+        graphNodeCount: 107,
+        momentumOwned: true,
+      })
+
+      useProgressionStore.getState().prestige()
+
+      const state = useProgressionStore.getState()
+      expect(state.currency.amount).toBe(0)
+      expect(state.graphNodeCount).toBe(STARTING_GRAPH_NODE_COUNT)
+      expect(state.highestGraphNodeCount).toBe(STARTING_GRAPH_NODE_COUNT)
+      expect(state.momentumOwned).toBe(false)
+
+      const prestige = usePrestigeStore.getState()
+      expect(prestige.nebulas.amount).toBeGreaterThan(0)
+      expect(prestige.prestigeCount).toBe(1)
+      expect(prestige.lifetimeHighestGraphNodeCount).toBeGreaterThanOrEqual(107)
+    })
+  })
+})
+
+describe('purchaseMomentum', () => {
+  const { cost, minLevel } = PRODUCTION_CONFIG.upgrades.momentum
+
+  it('is a one-time unlock for 500 Insight at level 18', () => {
+    expect(cost).toBe(500)
+    expect(minLevel).toBe(18)
+  })
+
+  it('buys once, deducting its cost, then refuses a second purchase', () => {
+    useProgressionStore.setState({ currency: earn(createCurrency(), cost * 2), highestGraphNodeCount: minLevel })
+    expect(useProgressionStore.getState().purchaseMomentum()).toBe(true)
+    expect(useProgressionStore.getState().momentumOwned).toBe(true)
+    expect(useProgressionStore.getState().currency.amount).toBe(cost)
+    expect(useProgressionStore.getState().purchaseMomentum()).toBe(false)
+    expect(useProgressionStore.getState().currency.amount).toBe(cost)
+  })
+
+  it('refuses below its level requirement, even with enough currency', () => {
+    useProgressionStore.setState({ currency: earn(createCurrency(), cost), highestGraphNodeCount: minLevel - 1 })
+    expect(useProgressionStore.getState().purchaseMomentum()).toBe(false)
+    expect(useProgressionStore.getState().momentumOwned).toBe(false)
+  })
+
+  it('refuses when it cannot be afforded', () => {
+    useProgressionStore.setState({ currency: earn(createCurrency(), cost - 1), highestGraphNodeCount: minLevel })
+    expect(useProgressionStore.getState().purchaseMomentum()).toBe(false)
+    expect(useProgressionStore.getState().momentumOwned).toBe(false)
+  })
+})
+
+describe('grafity-save-v1 migration', () => {
+  /** Seeds a v0 persisted save and forces zustand to rehydrate it through the store's migrate(). */
+  async function rehydrateV0(state: Record<string, unknown>): Promise<void> {
+    localStorage.setItem('grafity-save-v1', JSON.stringify({ state, version: 0 }))
+    await useProgressionStore.persist.rehydrate()
+  }
+
+  it('strips the removed bidirectional algorithm, refunds its 20000 Insight, and moves its user onto A*', async () => {
+    await rehydrateV0({
+      currency: { amount: 123 },
+      purchasedUpgradeIds: ['bfs', 'a-star', 'bidirectional'],
+      activeStrategyId: 'bidirectional',
+    })
+
+    const state = useProgressionStore.getState()
+    expect(state.purchasedUpgradeIds).toEqual(['bfs', 'a-star'])
+    expect(state.currency.amount).toBe(20123)
+    expect(state.activeStrategyId).toBe('a-star')
+  })
+
+  it('strips the removed Least Visited Path, refunds 300, and falls back to Least Visited', async () => {
+    await rehydrateV0({
+      currency: { amount: 0 },
+      purchasedUpgradeIds: ['least-visited-star', 'least-visited-path'],
+      activeStrategyId: 'least-visited-path',
+    })
+
+    const state = useProgressionStore.getState()
+    expect(state.purchasedUpgradeIds).toEqual(['least-visited-star'])
+    expect(state.currency.amount).toBe(300)
+    expect(state.activeStrategyId).toBe('least-visited-star')
+  })
+
+  it('leaves a save without the removed algorithms untouched', async () => {
+    await rehydrateV0({
+      currency: { amount: 50 },
+      purchasedUpgradeIds: ['bfs'],
+      activeStrategyId: 'bfs',
+    })
+
+    const state = useProgressionStore.getState()
+    expect(state.purchasedUpgradeIds).toEqual(['bfs'])
+    expect(state.currency.amount).toBe(50)
+    expect(state.activeStrategyId).toBe('bfs')
+  })
+})
+
+describe('repeatable Momentum migration', () => {
+  it('turns any owned v2 Momentum level into the one-time unlock, and drops the old field', async () => {
+    localStorage.setItem('grafity-save-v1', JSON.stringify({ state: { momentumLevel: 3 }, version: 2 }))
+    await useProgressionStore.persist.rehydrate()
+    expect(useProgressionStore.getState().momentumOwned).toBe(true)
+    expect('momentumLevel' in useProgressionStore.getState()).toBe(false)
+  })
+
+  it('leaves Momentum unowned for a v2 save at level 0', async () => {
+    localStorage.setItem('grafity-save-v1', JSON.stringify({ state: { momentumLevel: 0 }, version: 2 }))
+    await useProgressionStore.persist.rehydrate()
+    expect(useProgressionStore.getState().momentumOwned).toBe(false)
+  })
+})
+
+describe('starting Node Memory', () => {
+  it('a fresh cycle starts with the free Node Memory level, and prestige keeps granting it', () => {
+    useProgressionStore.getState().resetProgress()
+    expect(useProgressionStore.getState().memoryLevel).toBe(STARTING_MEMORY_LEVEL)
+    expect(STARTING_MEMORY_LEVEL).toBeGreaterThanOrEqual(1)
+
+    useProgressionStore.setState({ memoryLevel: 7 })
+    useProgressionStore.getState().prestige()
+    expect(useProgressionStore.getState().memoryLevel).toBe(STARTING_MEMORY_LEVEL)
+  })
+
+  it('tops up a v1 save that predates the free level, without touching higher levels', async () => {
+    localStorage.setItem('grafity-save-v1', JSON.stringify({ state: { memoryLevel: 0 }, version: 1 }))
+    await useProgressionStore.persist.rehydrate()
+    expect(useProgressionStore.getState().memoryLevel).toBe(STARTING_MEMORY_LEVEL)
+
+    localStorage.setItem('grafity-save-v1', JSON.stringify({ state: { memoryLevel: 5 }, version: 1 }))
+    await useProgressionStore.persist.rehydrate()
+    expect(useProgressionStore.getState().memoryLevel).toBe(5)
   })
 })

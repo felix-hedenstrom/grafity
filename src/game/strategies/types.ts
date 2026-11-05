@@ -12,10 +12,16 @@ export interface StrategyContext {
   memoryLevel: number
   /** Nodes currently claimed by another walker (Traffic Control) — off-limits as a next hop while set. Undefined/empty when Traffic Control isn't owned or is toggled off. */
   excludedNodeIds?: ReadonlySet<NodeId>
+  /** This walker's index in the run's walker array (0 = the Spaceship) — lets shared-memory strategies key per-walker claims. Defaults to 0 when absent (tests, sim). */
+  walkerIndex?: number
+  /** The node this walker is ultimately hunting for — the graph's goal for forward walkers, the START node for Reverse Beacon walkers launched from the exit. Strategies that aim at a destination must use this, never graph.goalNodeId directly. Defaults to graph.goalNodeId when absent. */
+  targetNodeId?: NodeId
+  /** Cross-walker scratch state created by createSharedMemory(), one object shared by every walker running this strategy (pheromone trails, swarm claims) — mutated in place. Undefined when the strategy declares none. */
+  sharedMemory?: unknown
 }
 
 /** What kind of thing a highlighted group of nodes represents, so GraphView can color each consistently across strategies. */
-export type HighlightKind = 'remembered' | 'stack' | 'candidate' | 'frontier' | 'path'
+export type HighlightKind = 'remembered' | 'stack' | 'candidate' | 'frontier' | 'path' | 'trail'
 
 export interface NodeHighlightGroup {
   kind: HighlightKind
@@ -26,6 +32,8 @@ export interface TraversalStrategy {
   id: string
   name: string
   createMemory?(): unknown
+  /** One shared scratch object for ALL walkers running this strategy (vs createMemory's per-walker state). Must be JSON-serializable — plain objects/arrays, no Sets or Maps — because it's persisted in the run save. Created fresh on strategy switch and on every new graph. */
+  createSharedMemory?(): unknown
   /** Must return a graph neighbor of ctx.walker.currentNodeId. */
   chooseNextNode(ctx: StrategyContext): NodeId
   /** Groups of nodes this strategy is currently tracking, for visualization (e.g. a remembered trail, a backtracking stack, scored candidates). Omit or return an empty array if there's nothing to highlight. */

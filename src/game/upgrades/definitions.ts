@@ -1,317 +1,242 @@
-import {
-  AMPLIFIER_BASE_COST,
-  AMPLIFIER_COST_GROWTH,
-  DISCOVERY_BONUS_BASE_COST,
-  DISCOVERY_BONUS_COST_GROWTH,
-  DISCOVERY_BONUS_PERCENT_PER_LEVEL,
-  EXIT_BONUS_BASE_COST,
-  EXIT_BONUS_COST_GROWTH,
-  EXIT_BONUS_PERCENT_PER_LEVEL,
-  EXPANSION_BASE_COST,
-  EXPANSION_COST_GROWTH,
-  EXPANSION_NODES_PER_LEVEL,
-  INSIGHT_MULTIPLIER_BASE_COST,
-  INSIGHT_MULTIPLIER_COST_GROWTH,
-  INSIGHT_MULTIPLIER_PERCENT_PER_LEVEL,
-  REVISIT_BONUS_BASE_COST,
-  REVISIT_BONUS_COST_GROWTH,
-  REVISIT_BONUS_PERCENT_PER_LEVEL,
-} from '../currency/rules'
-import { CLARITY_COST } from '../graph/generatePlanar'
-import {
-  DISCOVER_WAIT_BASE_COST,
-  DISCOVER_WAIT_COST_GROWTH,
-  DISCOVER_WAIT_PERCENT_PER_LEVEL,
-  MAIN_WALKER_SPEED_BASE_COST,
-  MAIN_WALKER_SPEED_COST_GROWTH,
-  MAIN_WALKER_SPEED_PER_LEVEL,
-  MOMENTUM_BASE_COST,
-  MOMENTUM_COST_GROWTH,
-  MOMENTUM_MAX_MULTIPLIER,
-  MOMENTUM_PERCENT_PER_LEVEL,
-  QUICK_STEPS_BASE_COST,
-  QUICK_STEPS_COST_GROWTH,
-  QUICK_STEPS_PERCENT_PER_LEVEL,
-  UFO_SPEED_BASE_COST,
-  UFO_SPEED_COST_GROWTH,
-  UFO_SPEED_MAX_LEVEL,
-  UFO_SPEED_RATIO_BASE,
-  UFO_SPEED_RATIO_MAX,
-  UFO_SPEED_RATIO_PERCENT_PER_LEVEL,
-} from '../speed/rules'
+import type { GameConfig } from '../config/types'
+import { PRODUCTION_CONFIG } from '../config/production'
 import { aStar } from '../strategies/aStar'
-import { bidirectionalSearch } from '../strategies/bidirectionalSearch'
 import { breadthFirstSearch } from '../strategies/breadthFirstSearch'
+import { compass } from '../strategies/compass'
 import { depthFirstSearch } from '../strategies/depthFirstSearch'
 import { dijkstra } from '../strategies/dijkstra'
 import { greedyFrontier } from '../strategies/greedyFrontier'
-import { leastVisitedPath } from '../strategies/leastVisitedPath'
 import { leastVisitedStar } from '../strategies/leastVisitedStar'
-import {
-  DEEP_MEMORY_BASE_COST,
-  DEEP_MEMORY_COST_GROWTH,
-  DEEP_MEMORY_PERCENT_PER_LEVEL,
-  NODE_MEMORY_BASE_COST,
-  NODE_MEMORY_COST_GROWTH,
-} from '../strategies/memory'
+import { pheromone } from '../strategies/pheromone'
 import { randomWalk } from '../strategies/randomWalk'
-import { SEARCHER_BASE_COST, SEARCHER_COST_GROWTH } from '../walker/rules'
+import { swarmSearch } from '../strategies/swarmSearch'
 import type { RepeatableUpgradeInfo } from './scaling'
 import type { UpgradeDefinition } from './types'
 
 export const DEFAULT_STRATEGY_ID = randomWalk.id
 
-/** Unlock a traversal strategy — mutually exclusive, picked via the shop's Use/Active toggle. Ordered by cost, which is also unlock order under progressive reveal. */
-export const UPGRADES: UpgradeDefinition[] = [
+/** Each strategy unlock's identity — cost/minLevel come from config.upgrades.strategies, keyed by id. */
+const STRATEGY_UPGRADES = [
   {
     id: 'least-visited-star',
-    name: 'Least Visited*',
+    name: 'Least Visited',
     description: 'Always heads toward whichever neighbor it has stepped on the fewest times so far — spreads exploration out instead of clumping.',
-    cost: 150,
-    minLevel: 15,
     strategyId: leastVisitedStar.id,
-  },
-  {
-    id: 'least-visited-path',
-    name: 'Least Visited Path',
-    description: 'Always heads toward whichever neighbor is reachable via the edge it has crossed the fewest times — tracks specific routes rather than nodes, so two different paths into the same place are never treated as the same thing.',
-    cost: 300,
-    minLevel: 30,
-    strategyId: leastVisitedPath.id,
   },
   {
     id: 'bfs',
     name: 'Breadth-First Search',
     description: 'Always heads toward whichever unexplored node is fewest hops away, ignoring edge weight entirely — explores outward in rings.',
-    cost: 650,
-    minLevel: 50,
     strategyId: breadthFirstSearch.id,
   },
   {
     id: 'dfs',
     name: 'Depth-First Search',
     description: 'Systematically explores one branch at a time and backtracks properly on dead ends.',
-    cost: 1100,
-    minLevel: 80,
     strategyId: depthFirstSearch.id,
+  },
+  {
+    id: 'pheromone',
+    name: 'Pheromone Trails',
+    description:
+      'Every ship leaves a fading trail on each route it flies, and every ship steers toward the faintest trail it can see — the fleet naturally spreads out without ever talking. The first algorithm that genuinely gets better with every extra UFO.',
+    strategyId: pheromone.id,
   },
   {
     id: 'greedy-frontier',
     name: 'Greedy Frontier',
     description: 'Always heads toward whichever neighbor opens up the most unexplored territory.',
-    cost: 2400,
-    minLevel: 130,
     strategyId: greedyFrontier.id,
   },
   {
     id: 'dijkstra',
     name: 'Dijkstra',
     description: "Weighs each edge by its real cost rather than counting hops — finds the genuinely cheapest route to whatever's nearest unexplored.",
-    cost: 5000,
-    minLevel: 210,
     strategyId: dijkstra.id,
+  },
+  {
+    id: 'compass',
+    name: 'Compass',
+    description: 'A needle that points at the exit the moment it comes into view — charges straight toward it as the crow flies, never mind how long the edges on the way there actually are. Fast, bold, occasionally very wrong.',
+    strategyId: compass.id,
   },
   {
     id: 'a-star',
     name: 'A*',
     description: "The Spaceship can see the exit now — beelines straight for it along the cheapest weighted route, using the graph's layout as a heuristic instead of exploring outward first.",
-    cost: 10200,
-    minLevel: 340,
     strategyId: aStar.id,
   },
   {
-    id: 'bidirectional',
-    name: 'Bidirectional Search',
-    description: 'The Spaceship and a UFO — one from the start, one from the exit — searching toward each other until they meet in the middle. Always exactly two, from opposite ends.',
-    cost: 20000,
-    minLevel: 550,
-    strategyId: bidirectionalSearch.id,
+    id: 'swarm',
+    name: 'Swarm Search',
+    description:
+      "The whole fleet coordinates: each ship claims its own slice of the unexplored frontier and sweeps it in parallel, and the moment anyone spots the exit, everyone's work becomes the Spaceship's route. A* with backup.",
+    strategyId: swarmSearch.id,
   },
-]
+] as const
+// Bidirectional Search used to sit above A* here as the top algorithm — it's now Reverse Beacon,
+// a permanent Nebula-priced modifier in the Prestige Shop that works with EVERY algorithm; see
+// src/game/prestige/rules.ts (NEBULA_UPGRADES) and src/game/loop/reverseBeacon.ts.
 
-/** Quick Steps is repeatable — each purchase multiplies travel speed by another 10%, compounding, uncapped. */
-export const QUICK_STEPS_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Quick Steps',
-  description: `+${QUICK_STEPS_PERCENT_PER_LEVEL * 100}% travel speed per purchase.`,
-  baseCost: QUICK_STEPS_BASE_COST,
-  costGrowth: QUICK_STEPS_COST_GROWTH,
-  minLevel: 10,
+/** Unlock a traversal strategy — mutually exclusive, picked via the shop's Use/Active toggle. Array order is weakest-to-strongest (the sim's bestOwnedStrategyId relies on it), which the production costs also follow; an override config's costs might not. */
+export function buildStrategyUpgrades(config: GameConfig = PRODUCTION_CONFIG): UpgradeDefinition[] {
+  return STRATEGY_UPGRADES.map((upgrade) => {
+    const balance = config.upgrades.strategies[upgrade.id]
+    if (!balance) throw new Error(`config.upgrades.strategies is missing '${upgrade.id}'`)
+    return { ...upgrade, cost: balance.cost, minLevel: balance.minLevel }
+  })
 }
 
-const momentumPercentPerLevel = MOMENTUM_PERCENT_PER_LEVEL * 100
-const momentumMaxPercent = Math.round((MOMENTUM_MAX_MULTIPLIER - 1) * 100)
+export interface UpgradeInfos {
+  /** Quick Study — each purchase shrinks how long a walker pauses the first time it visits a node, compounding, uncapped. Revisits are always instant, unaffected by this. */
+  discoverWait: RepeatableUpgradeInfo
+  /** Node Memory is a passive stat, not a strategy of its own — it caps how many of the walker's most recent nodes ANY active strategy can remember and avoid revisiting (DFS's backtracking stack included). At 0 levels, nothing is remembered at all. */
+  nodeMemory: RepeatableUpgradeInfo
+  /** Deep Memory is expensive and repeatable — each purchase multiplies the effective Node Memory level, compounding. A late-game power spike for Node Memory specifically. */
+  deepMemory: RepeatableUpgradeInfo
+  /** Expansion is repeatable — each purchase adds more nodes to the graph every time the walker reaches the exit, uncapped. */
+  expansion: RepeatableUpgradeInfo
+  /** Amplifier is repeatable and expensive — each purchase multiplies the entire per-solve node gain, compounding. */
+  amplifier: RepeatableUpgradeInfo
+  /** Discovery Bonus is repeatable — each purchase raises the reward for discovering a new node, compounding. */
+  discoveryBonus: RepeatableUpgradeInfo
+  /** Revisit Bonus is repeatable — each purchase raises the reward for stepping onto an already-discovered node, compounding. */
+  revisitBonus: RepeatableUpgradeInfo
+  /** Exit Bonus is repeatable — each purchase raises the reward for reaching the exit, compounding. */
+  exitBonus: RepeatableUpgradeInfo
+  /** Insight Multiplier is repeatable and expensive — each purchase multiplies all Insight earned, compounding. */
+  insightMultiplier: RepeatableUpgradeInfo
+  /** Extra Searcher is repeatable — each purchase adds one more walker running the active strategy, all sharing discovery and a pooled Node Memory window. While Reverse Beacon is active, half the UFOs (rounded up) launch from the exit instead of the start. */
+  searcher: RepeatableUpgradeInfo
+  /** Thrusters is repeatable and applies to every walker (Spaceship and UFOs alike) — it speeds up how fast a walker ramps up to its top speed and brakes into a stop, distinct from Momentum, which boosts the same acceleration over time rather than the speed-of-light ceiling. */
+  thrusters: RepeatableUpgradeInfo
+  /** Darkly-bot Servos is repeatable (capped) — each purchase shortens the time between Darkly-bot's untangling moves on the Scanner Array, compounding. Only purchasable once Darkly-bot itself is owned. */
+  darklyBotServos: RepeatableUpgradeInfo
+}
 
-/** Momentum is repeatable (not a plain UpgradeDefinition) — each purchase stacks another level, uncapped; the rising cost is what throttles it. */
-export const MOMENTUM_UPGRADE_INFO: RepeatableUpgradeInfo = {
+/** Every repeatable upgrade's shop entry for a given balance config — costs, gates, and the description percentages all derive from config, so an override config's shop copy stays truthful automatically. */
+export function buildUpgradeInfos(config: GameConfig = PRODUCTION_CONFIG): UpgradeInfos {
+  const u = config.upgrades
+  const pct = (fraction: number) => Math.round(fraction * 100)
+  return {
+    discoverWait: {
+      name: 'Quick Study',
+      description: `-${u.discoverWait.percentPerLevel * 100}% time spent pausing at a newly discovered node per purchase, compounding.`,
+      baseCost: u.discoverWait.baseCost,
+      costGrowth: u.discoverWait.costGrowth,
+      minLevel: u.discoverWait.minLevel,
+    },
+    nodeMemory: {
+      name: 'Node Memory',
+      description: '+1 remembered step per purchase, avoiding revisits.',
+      baseCost: u.nodeMemory.baseCost,
+      costGrowth: u.nodeMemory.costGrowth,
+      minLevel: u.nodeMemory.minLevel,
+    },
+    deepMemory: {
+      name: 'Deep Memory',
+      description: `Multiplies how much is remembered by ${pct(u.deepMemory.percentPerLevel)}% per purchase, compounding.`,
+      baseCost: u.deepMemory.baseCost,
+      costGrowth: u.deepMemory.costGrowth,
+      minLevel: u.deepMemory.minLevel,
+    },
+    expansion: {
+      name: 'Expansion',
+      description: `+${u.expansion.nodesPerLevel} node per solve per purchase.`,
+      baseCost: u.expansion.baseCost,
+      costGrowth: u.expansion.costGrowth,
+      minLevel: u.expansion.minLevel,
+    },
+    amplifier: {
+      name: 'Amplifier',
+      description: 'Multiplies per-solve node gain per purchase, compounding.',
+      baseCost: u.amplifier.baseCost,
+      costGrowth: u.amplifier.costGrowth,
+      minLevel: u.amplifier.minLevel,
+      maxLevel: u.amplifier.maxLevel,
+    },
+    discoveryBonus: {
+      name: 'Discovery Bonus',
+      description: `+${pct(u.discoveryBonus.percentPerLevel)}% Insight per newly discovered node per purchase, compounding.`,
+      baseCost: u.discoveryBonus.baseCost,
+      costGrowth: u.discoveryBonus.costGrowth,
+      minLevel: u.discoveryBonus.minLevel,
+    },
+    revisitBonus: {
+      name: 'Revisit Bonus',
+      description: `+${pct(u.revisitBonus.percentPerLevel)}% Insight per revisit per purchase, compounding.`,
+      baseCost: u.revisitBonus.baseCost,
+      costGrowth: u.revisitBonus.costGrowth,
+      minLevel: u.revisitBonus.minLevel,
+    },
+    exitBonus: {
+      name: 'Exit Bonus',
+      description: `+${pct(u.exitBonus.percentPerLevel)}% Insight on exit per purchase, compounding.`,
+      baseCost: u.exitBonus.baseCost,
+      costGrowth: u.exitBonus.costGrowth,
+      minLevel: u.exitBonus.minLevel,
+    },
+    insightMultiplier: {
+      name: 'Insight Multiplier',
+      description: `+${pct(u.insightMultiplier.percentPerLevel)}% Insight earned per purchase, compounding.`,
+      baseCost: u.insightMultiplier.baseCost,
+      costGrowth: u.insightMultiplier.costGrowth,
+      minLevel: u.insightMultiplier.minLevel,
+    },
+    searcher: {
+      name: 'Extra Searcher',
+      description: '+1 searcher exploring simultaneously per purchase.',
+      baseCost: u.searcher.baseCost,
+      costGrowth: u.searcher.costGrowth,
+      minLevel: u.searcher.minLevel,
+    },
+    thrusters: {
+      name: 'Thrusters',
+      description: `+${pct(u.thrusters.percentPerLevel)}% acceleration per purchase — the Spaceship ramps up and brakes faster.`,
+      baseCost: u.thrusters.baseCost,
+      costGrowth: u.thrusters.costGrowth,
+      minLevel: u.thrusters.minLevel,
+      maxLevel: u.thrusters.maxLevel,
+    },
+    darklyBotServos: {
+      name: 'Darkly-bot Servos',
+      description: `Darkly-bot untangles ${pct(u.darklyBotServos.percentPerLevel)}% faster per purchase, compounding.`,
+      baseCost: u.darklyBotServos.baseCost,
+      costGrowth: u.darklyBotServos.costGrowth,
+      minLevel: u.darklyBotServos.minLevel,
+      maxLevel: u.darklyBotServos.maxLevel,
+    },
+  }
+}
+
+/** The live game's catalogs — always the production balance; the sim builds its own from an override config. */
+export const UPGRADES = buildStrategyUpgrades()
+export const UPGRADE_INFOS = buildUpgradeInfos()
+
+// Minimap, Unlock UFO, and Traffic Control used to live here as one-time Insight-priced
+// unlocks — they're now permanent, Nebula-priced purchases in the Prestige Shop; see
+// src/game/prestige/rules.ts (NEBULA_UPGRADES).
+
+/** Momentum — a one-time Speed unlock: every walker's acceleration compounds for each second of the current run, up to its cap (see computeMomentumMultiplier in speed/rules.ts). */
+export const MOMENTUM = {
   name: 'Momentum',
-  description: `+${momentumPercentPerLevel}% compounding speed per second in the graph per purchase (resets each run) — caps at +${momentumMaxPercent}%.`,
-  baseCost: MOMENTUM_BASE_COST,
-  costGrowth: MOMENTUM_COST_GROWTH,
-  minLevel: 8,
+  description: `+${Math.round(PRODUCTION_CONFIG.upgrades.momentum.percentPerSecond * 10000) / 100}% compounding acceleration per second in the graph (resets each run) — caps at +${Math.round((PRODUCTION_CONFIG.upgrades.momentum.maxMultiplier - 1) * 100)}%.`,
+  cost: PRODUCTION_CONFIG.upgrades.momentum.cost,
+  minLevel: PRODUCTION_CONFIG.upgrades.momentum.minLevel,
 }
 
-const discoverWaitPercentPerLevel = DISCOVER_WAIT_PERCENT_PER_LEVEL * 100
-
-/** Quick Study is repeatable — each purchase shrinks how long a walker pauses the first time it visits a node by another 5%, compounding, uncapped. Revisits are always instant, unaffected by this. */
-export const DISCOVER_WAIT_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Quick Study',
-  description: `-${discoverWaitPercentPerLevel}% time spent pausing at a newly discovered node per purchase, compounding.`,
-  baseCost: DISCOVER_WAIT_BASE_COST,
-  costGrowth: DISCOVER_WAIT_COST_GROWTH,
-  minLevel: 10,
+/** Pulsar Hunter — a one-time, toggleable algorithm improvement: while a level still has uncollected neutron stars, every walker detours to collect them before following its algorithm (see game/loop/pulsarHunter.ts). */
+export const PULSAR_HUNTER = {
+  name: 'Pulsar Hunter',
+  description: 'Works with any algorithm: while a pulsar is still shining in this level, ships go collect it first — then carry on as usual.',
+  cost: PRODUCTION_CONFIG.upgrades.pulsarHunter.cost,
+  minLevel: PRODUCTION_CONFIG.upgrades.pulsarHunter.minLevel,
 }
 
-/**
- * Node Memory is a passive stat, not a strategy of its own — it caps how many of the walker's
- * most recent nodes ANY active strategy can remember and avoid revisiting (DFS's backtracking
- * stack included). At 0 levels, nothing is remembered at all.
- */
-export const NODE_MEMORY_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Node Memory',
-  description: '+1 remembered step per purchase, avoiding revisits.',
-  baseCost: NODE_MEMORY_BASE_COST,
-  costGrowth: NODE_MEMORY_COST_GROWTH,
-  minLevel: 0,
-}
-
-const deepMemoryPercent = Math.round(DEEP_MEMORY_PERCENT_PER_LEVEL * 100)
-
-/** Deep Memory is expensive and repeatable — each purchase multiplies the effective Node Memory level, compounding. A late-game power spike for Node Memory specifically. */
-export const DEEP_MEMORY_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Deep Memory',
-  description: `Multiplies how much is remembered by ${deepMemoryPercent}% per purchase, compounding.`,
-  baseCost: DEEP_MEMORY_BASE_COST,
-  costGrowth: DEEP_MEMORY_COST_GROWTH,
-  minLevel: 80,
-}
-
-/** Expansion is repeatable — each purchase adds one more node to the graph every time the walker reaches the exit, uncapped. */
-export const EXPANSION_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Expansion',
-  description: `+${EXPANSION_NODES_PER_LEVEL} node per solve per purchase.`,
-  baseCost: EXPANSION_BASE_COST,
-  costGrowth: EXPANSION_COST_GROWTH,
-  minLevel: 20,
-}
-
-/** Amplifier is repeatable and expensive — each purchase multiplies the entire per-solve node gain, compounding. */
-export const AMPLIFIER_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Amplifier',
-  description: 'Multiplies per-solve node gain per purchase, compounding.',
-  baseCost: AMPLIFIER_BASE_COST,
-  costGrowth: AMPLIFIER_COST_GROWTH,
-  minLevel: 45,
-}
-
-const discoveryBonusPercent = Math.round(DISCOVERY_BONUS_PERCENT_PER_LEVEL * 100)
-
-/** Discovery Bonus is repeatable — each purchase raises the reward for discovering a new node, compounding. */
-export const DISCOVERY_BONUS_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Discovery Bonus',
-  description: `+${discoveryBonusPercent}% Insight per newly discovered node per purchase, compounding.`,
-  baseCost: DISCOVERY_BONUS_BASE_COST,
-  costGrowth: DISCOVERY_BONUS_COST_GROWTH,
-  minLevel: 5,
-}
-
-const revisitBonusPercent = Math.round(REVISIT_BONUS_PERCENT_PER_LEVEL * 100)
-
-/** Revisit Bonus is repeatable — each purchase raises the reward for stepping onto an already-discovered node, compounding. */
-export const REVISIT_BONUS_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Revisit Bonus',
-  description: `+${revisitBonusPercent}% Insight per revisit per purchase, compounding.`,
-  baseCost: REVISIT_BONUS_BASE_COST,
-  costGrowth: REVISIT_BONUS_COST_GROWTH,
-  minLevel: 10,
-}
-
-const exitBonusPercent = Math.round(EXIT_BONUS_PERCENT_PER_LEVEL * 100)
-
-/** Exit Bonus is repeatable — each purchase raises the reward for reaching the exit, compounding. */
-export const EXIT_BONUS_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Exit Bonus',
-  description: `+${exitBonusPercent}% Insight on exit per purchase, compounding.`,
-  baseCost: EXIT_BONUS_BASE_COST,
-  costGrowth: EXIT_BONUS_COST_GROWTH,
-  minLevel: 15,
-}
-
-const insightMultiplierPercent = Math.round(INSIGHT_MULTIPLIER_PERCENT_PER_LEVEL * 100)
-
-/** Insight Multiplier is repeatable and expensive — each purchase multiplies all Insight earned, compounding. */
-export const INSIGHT_MULTIPLIER_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Insight Multiplier',
-  description: `+${insightMultiplierPercent}% Insight earned per purchase, compounding.`,
-  baseCost: INSIGHT_MULTIPLIER_BASE_COST,
-  costGrowth: INSIGHT_MULTIPLIER_COST_GROWTH,
-  minLevel: 20,
-}
-
-/** Extra Searcher is repeatable — each purchase adds one more walker running the active strategy, all sharing discovery and a pooled Node Memory window. Doesn't affect Bidirectional Search, which is always exactly its own two. */
-export const SEARCHER_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Extra Searcher',
-  description: '+1 searcher exploring simultaneously per purchase.',
-  baseCost: SEARCHER_BASE_COST,
-  costGrowth: SEARCHER_COST_GROWTH,
-  minLevel: 35,
-}
-
-/** Spaceship Speed is repeatable and only ever speeds up the Spaceship (walkers[0]) — every UFO is unaffected. Only matters once there's more than one walker in play, so it's gated well behind Extra Searcher. */
-export const MAIN_WALKER_SPEED_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'Spaceship Speed',
-  description: `+${MAIN_WALKER_SPEED_PER_LEVEL} travel speed per purchase — Spaceship only.`,
-  baseCost: MAIN_WALKER_SPEED_BASE_COST,
-  costGrowth: MAIN_WALKER_SPEED_COST_GROWTH,
-  minLevel: 35,
-}
-
-const ufoSpeedRatioBasePercent = Math.round(UFO_SPEED_RATIO_BASE * 100)
-const ufoSpeedRatioMaxPercent = Math.round(UFO_SPEED_RATIO_MAX * 100)
-const ufoSpeedRatioPercentPerLevel = Math.round(UFO_SPEED_RATIO_PERCENT_PER_LEVEL * 100)
-
-/** UFO Speed is repeatable but capped — every UFO (every walker besides the Spaceship) travels at a fraction of the Spaceship's current speed, starting at 50% and buyable up to 75% in 1-point steps. */
-export const UFO_SPEED_UPGRADE_INFO: RepeatableUpgradeInfo = {
-  name: 'UFO Speed',
-  description: `+${ufoSpeedRatioPercentPerLevel}% of Spaceship speed per purchase for every UFO — starts at ${ufoSpeedRatioBasePercent}%, caps at ${ufoSpeedRatioMaxPercent}%.`,
-  baseCost: UFO_SPEED_BASE_COST,
-  costGrowth: UFO_SPEED_COST_GROWTH,
-  minLevel: 35,
-  maxLevel: UFO_SPEED_MAX_LEVEL,
-}
-
-/** Clarity is a one-time, on/off unlock — buying it jumps straight to max spacing, keeping the graph legible instead of a tangled hairball as it grows. */
-export const CLARITY_UPGRADE: UpgradeDefinition = {
-  id: 'clarity',
-  name: 'Clarity',
-  description: 'Spreads nodes farther apart, untangling the graph as it grows.',
-  cost: CLARITY_COST,
-  minLevel: 25,
-}
-
-/** Minimap is a one-time unlock (not repeatable) — once owned it can be toggled on or off freely, no further purchase needed. */
-export const MINIMAP_UPGRADE: UpgradeDefinition = {
-  id: 'minimap',
-  name: 'Minimap',
-  description: 'A small overview of the whole graph, shown once the camera has to zoom in close.',
-  cost: 400,
-  minLevel: 40,
-}
-
-/** Unlock UFO is a one-time purchase (not repeatable) — required before Extra Searcher (and, transitively, Spaceship Speed and UFO Speed) can be bought at all. Comes before Traffic Control. */
-export const UNLOCK_UFO_UPGRADE: UpgradeDefinition = {
-  id: 'unlock-ufo',
-  name: 'Unlock UFO',
-  description: 'Allows a UFO to join the search — required before Extra Searcher can be bought.',
-  cost: 300,
-  minLevel: 30,
-}
-
-/** Traffic Control is a one-time unlock (not repeatable) — once owned it can be toggled on or off
- * freely. While on, no two walkers may occupy or cross into the same node at the same time. */
-export const MUTEX_UPGRADE: UpgradeDefinition = {
-  id: 'mutex',
-  name: 'Traffic Control',
-  description: 'Walkers can no longer pass through or land on a node another walker is currently using.',
-  cost: 500,
-  minLevel: 45,
+/** Exit Avoidance — a one-time, toggleable algorithm improvement: the algorithm explores as usual, but once the exit is discovered, forward walkers collect every remaining pulsar before taking it (see game/loop/pulsarHunter.ts). */
+export const EXIT_AVOIDANCE = {
+  name: 'Exit Avoidance',
+  description: 'Works with any algorithm: ships keep clear of the exit until every pulsar in the level has been collected.',
+  cost: PRODUCTION_CONFIG.upgrades.exitAvoidance.cost,
+  minLevel: PRODUCTION_CONFIG.upgrades.exitAvoidance.minLevel,
 }

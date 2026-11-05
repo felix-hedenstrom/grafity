@@ -1,0 +1,73 @@
+.scaleBar {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 6px 10px 5px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+/* Restarted (via React key) on every new graph whose spacing changed. */
+.pulse {
+  animation: scalePulse 900ms ease-out;
+}
+
+@keyframes scalePulse {
+  0% {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 0 var(--accent-border);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+/* The ├────┤ ruler: a bottom rule with end caps. Width is set inline from fixedScaleBar (a constant length). */
+.ruler {
+  height: 7px;
+  border: 2px solid var(--text-h);
+  border-top: none;
+}
+
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-h);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  animation: badgeFade 4s ease-in forwards;
+}
+
+.badgeUp {
+  color: var(--accent);
+}
+
+.badgeDown {
+  color: var(--text);
+}
+
+@keyframes badgeFade {
+  0%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

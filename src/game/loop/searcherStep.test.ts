@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GOAL_REWARD_PER_NODE, REVISIT_REWARD } from '../currency/rules'
+import { PRODUCTION_CONFIG } from '../config/production'
 import { createDiscovery } from '../discovery/reveal'
 import type { Graph, NodeId } from '../graph/types'
 import type { StrategyContext, TraversalStrategy } from '../strategies/types'
@@ -125,7 +125,7 @@ describe('commitHop', () => {
 
     expect(afterSecond.walker.currentNodeId).toBe('c')
     expect(afterSecond.goalReached).toBe(true)
-    expect(afterSecond.currencyEarned).toBeGreaterThanOrEqual(graph.nodes.length * GOAL_REWARD_PER_NODE)
+    expect(afterSecond.currencyEarned).toBeGreaterThanOrEqual(graph.nodes.length * PRODUCTION_CONFIG.currency.goalRewardPerNode)
   })
 
   it('awards only the tiny revisit reward when stepping onto an already-visited node', () => {
@@ -135,7 +135,7 @@ describe('commitHop', () => {
 
     expect(afterSecond.walker.currentNodeId).toBe('a')
     expect(afterSecond.wasAlreadyVisited).toBe(true)
-    expect(afterSecond.currencyEarned).toBe(REVISIT_REWARD)
+    expect(afterSecond.currencyEarned).toBe(PRODUCTION_CONFIG.currency.revisitReward)
   })
 
   it('uses the base reward rates by default, but custom rewardRates when supplied (Discovery/Revisit/Exit Bonus)', () => {
@@ -152,5 +152,16 @@ describe('commitHop', () => {
 
     // 'b' newly reveals 'c' (1 newly discovered node) at the custom discovery rate.
     expect(result.currencyEarned).toBe(customRates.discoveryPerNode)
+  })
+
+  it("goalNodeId: '' keeps a Reverse Beacon walker's landing on the real goal from counting as a win or paying the goal bonus", () => {
+    const graph = fixedGraph()
+    const afterFirst = commitHop({ graph, discovery: createDiscovery(graph, 'a'), walker: createWalker('a', 'goal'), nextNodeId: 'b', goalNodeId: '' })
+    const afterSecond = commitHop({ graph, discovery: afterFirst.discovery, walker: afterFirst.walker, nextNodeId: 'c', goalNodeId: '' })
+
+    expect(afterSecond.walker.currentNodeId).toBe('c') // c IS the graph's goal node
+    expect(afterSecond.goalReached).toBe(false)
+    expect(afterSecond.walker.origin).toBe('goal')
+    expect(afterSecond.currencyEarned).toBeLessThan(graph.nodes.length * PRODUCTION_CONFIG.currency.goalRewardPerNode)
   })
 })

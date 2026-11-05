@@ -1,63 +1,39 @@
+import type { GameConfig } from '../config/types'
+import { PRODUCTION_CONFIG } from '../config/production'
 import type { Graph } from '../graph/types'
 import type { CurrencyState } from './types'
 
-export const DISCOVERY_REWARD_PER_NODE = 2
-export const REVISIT_REWARD = 0.2
-export const GOAL_REWARD_PER_NODE = 10
-
-/** Discovery Bonus is repeatable — each purchase raises the discovery reward rate by another 20%, compounding, uncapped. Cost grows faster (25%) than the reward itself, so it isn't a permanent breakeven. */
-export const DISCOVERY_BONUS_PERCENT_PER_LEVEL = 0.2
-export const DISCOVERY_BONUS_BASE_COST = 15
-export const DISCOVERY_BONUS_COST_GROWTH = 1.25
-
-/** Revisit Bonus is repeatable — each purchase raises the revisit reward rate by another 20%, compounding, uncapped. Cost grows faster (25%) than the reward itself, so it isn't a permanent breakeven. */
-export const REVISIT_BONUS_PERCENT_PER_LEVEL = 0.2
-export const REVISIT_BONUS_BASE_COST = 15
-export const REVISIT_BONUS_COST_GROWTH = 1.25
-
-/** Exit Bonus is repeatable — each purchase raises the exit reward rate by another 20%, compounding, uncapped. */
-export const EXIT_BONUS_PERCENT_PER_LEVEL = 0.2
-export const EXIT_BONUS_BASE_COST = 30
-export const EXIT_BONUS_COST_GROWTH = 1.25
-
-export function computeDiscoveryRewardPerNode(discoveryBonusLevel: number): number {
-  return DISCOVERY_REWARD_PER_NODE * (1 + DISCOVERY_BONUS_PERCENT_PER_LEVEL) ** discoveryBonusLevel
+/** Discovery Bonus is repeatable — each purchase raises the discovery reward rate by another percentPerLevel, compounding, uncapped. Cost grows faster than the reward itself, so it isn't a permanent breakeven. */
+export function computeDiscoveryRewardPerNode(discoveryBonusLevel: number, config: GameConfig = PRODUCTION_CONFIG): number {
+  return config.currency.discoveryRewardPerNode * (1 + config.upgrades.discoveryBonus.percentPerLevel) ** discoveryBonusLevel
 }
 
-export function computeRevisitReward(revisitBonusLevel: number): number {
-  return REVISIT_REWARD * (1 + REVISIT_BONUS_PERCENT_PER_LEVEL) ** revisitBonusLevel
+/** Revisit Bonus is repeatable — each purchase raises the revisit reward rate by another percentPerLevel, compounding, uncapped. */
+export function computeRevisitReward(revisitBonusLevel: number, config: GameConfig = PRODUCTION_CONFIG): number {
+  return config.currency.revisitReward * (1 + config.upgrades.revisitBonus.percentPerLevel) ** revisitBonusLevel
 }
 
-export function computeGoalRewardPerNode(exitBonusLevel: number): number {
-  return GOAL_REWARD_PER_NODE * (1 + EXIT_BONUS_PERCENT_PER_LEVEL) ** exitBonusLevel
+/** Exit Bonus is repeatable — each purchase raises the exit reward rate by another percentPerLevel, compounding, uncapped. */
+export function computeGoalRewardPerNode(exitBonusLevel: number, config: GameConfig = PRODUCTION_CONFIG): number {
+  return config.currency.goalRewardPerNode * (1 + config.upgrades.exitBonus.percentPerLevel) ** exitBonusLevel
 }
-
-/** Expansion is repeatable — each purchase adds one more node to the graph every time the walker reaches the exit (base is a flat +1), uncapped. */
-export const EXPANSION_NODES_PER_LEVEL = 1
-export const EXPANSION_BASE_COST = 250
-/** Each level costs this much more than the last — geometric, not flat. */
-export const EXPANSION_COST_GROWTH = 1.2
-
-/** Amplifier is repeatable and expensive — each purchase multiplies the whole per-solve node gain by another 10%, compounding, uncapped. */
-export const AMPLIFIER_PERCENT_PER_LEVEL = 0.1
-export const AMPLIFIER_BASE_COST = 800
-export const AMPLIFIER_COST_GROWTH = 1.25
-
-/** Insight Multiplier is repeatable — each purchase multiplies ALL Insight earned (discovery, revisit, and exit rewards alike) by another 15%, compounding, uncapped. */
-export const INSIGHT_MULTIPLIER_PERCENT_PER_LEVEL = 0.15
-export const INSIGHT_MULTIPLIER_BASE_COST = 60
-export const INSIGHT_MULTIPLIER_COST_GROWTH = 1.3
 
 /** How much every Insight reward is scaled by right now (1 = no bonus yet) — applied once, where currency is actually credited, rather than threaded through every reward calculation. */
-export function computeInsightMultiplier(insightMultiplierLevel: number): number {
-  return (1 + INSIGHT_MULTIPLIER_PERCENT_PER_LEVEL) ** insightMultiplierLevel
+export function computeInsightMultiplier(insightMultiplierLevel: number, config: GameConfig = PRODUCTION_CONFIG): number {
+  return (1 + config.upgrades.insightMultiplier.percentPerLevel) ** insightMultiplierLevel
 }
 
-/** How many nodes a solve adds to the next graph: a flat 1 plus 1 more per Expansion level, then multiplied by Amplifier's compounding bonus. */
-export function computeNodesPerSolve(expansionLevel: number, amplifierLevel: number): number {
-  const base = 1 + expansionLevel * EXPANSION_NODES_PER_LEVEL
-  const multiplier = (1 + AMPLIFIER_PERCENT_PER_LEVEL) ** amplifierLevel
+/** How many nodes a solve adds to the next graph: a flat 1 plus nodesPerLevel more per Expansion level, then multiplied by Amplifier's compounding bonus. amplifierLevel is clamped to its maxLevel here too (not just at purchase time) as a safety net against the exact runaway that cap exists to prevent. */
+export function computeNodesPerSolve(expansionLevel: number, amplifierLevel: number, config: GameConfig = PRODUCTION_CONFIG): number {
+  const { expansion, amplifier } = config.upgrades
+  const base = 1 + expansionLevel * expansion.nodesPerLevel
+  const multiplier = (1 + amplifier.percentPerLevel) ** Math.min(amplifierLevel, amplifier.maxLevel ?? Infinity)
   return Math.max(1, Math.round(base * multiplier))
+}
+
+/** Nebulas earned on prestige, as a function of how far this run's graph ever grew — sqrt-shaped so payout keeps rising without exploding as high scores climb. Placeholder curve, tuned against the balance simulator in src/sim/. */
+export function nebulasForGraphSize(highestGraphNodeCount: number, config: GameConfig = PRODUCTION_CONFIG): number {
+  return Math.max(0, Math.floor(Math.sqrt(Math.max(0, highestGraphNodeCount - config.currency.nebulaPayoutReferenceNodes))))
 }
 
 /** Currency amounts round to this many decimal places on every change, so the fractional revisit reward can't accumulate floating-point drift. */
@@ -72,12 +48,12 @@ export function createCurrency(): CurrencyState {
   return { amount: 0, totalEarned: 0 }
 }
 
-export function computeDiscoveryReward(newlyDiscoveredNodeCount: number, rewardPerNode = DISCOVERY_REWARD_PER_NODE): number {
+export function computeDiscoveryReward(newlyDiscoveredNodeCount: number, rewardPerNode = PRODUCTION_CONFIG.currency.discoveryRewardPerNode): number {
   return newlyDiscoveredNodeCount * rewardPerNode
 }
 
 /** Scales with graph size so the reward keeps pace as completions grow the graph — a bigger exit is worth more. */
-export function computeGoalBonus(graph: Graph, rewardPerNode = GOAL_REWARD_PER_NODE): number {
+export function computeGoalBonus(graph: Graph, rewardPerNode = PRODUCTION_CONFIG.currency.goalRewardPerNode): number {
   return graph.nodes.length * rewardPerNode
 }
 

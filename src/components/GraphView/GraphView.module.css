@@ -63,59 +63,76 @@
   }
 }
 
+/* Edge strokes (and the other graph-space sizes below) are in SVG user units, which shrink as the
+   viewBox window grows with the graph's node spacing — GraphView sets --view-scale on the <svg>
+   (layout.ts's viewScale) so they hold the same on-screen weight at every level. */
 .edge {
   stroke: #5b6590;
-  stroke-width: 1.1;
-  stroke-dasharray: 1.5 6;
+  stroke-width: calc(1.1px * var(--view-scale, 1));
+  stroke-dasharray: calc(1.5px * var(--view-scale, 1)) calc(6px * var(--view-scale, 1));
   stroke-linecap: round;
   opacity: 0;
   animation: fade-in 300ms ease-out forwards;
 }
 
 /* An edge between two visited nodes — the walker's actual trail, distinct from the merely-seen
-   periphery. Solid and lit, unlike the dotted "possible route" look of .edge. */
+   periphery. Solid and lit, unlike the dotted "possible route" look of .edge. edge-blink plays
+   once, the instant .revealOverlay hands off to this (traveled flips false -> true for this
+   edge's id, which — since the <line> itself never unmounts, only its class list changes — is
+   the one moment this class actually gets added, so the animation fires exactly once per edge,
+   not on every unrelated re-render). */
 .traveledEdge {
   stroke: #eaf6ff;
-  stroke-width: 2.4;
+  stroke-width: calc(2.4px * var(--view-scale, 1));
   stroke-dasharray: none;
-  filter: drop-shadow(0 0 4px rgba(234, 246, 255, 0.85));
+  /* The resting look every traveled edge settles into once it's done blinking — deliberately
+     paler than the flash itself, so the blink actually reads as a one-off event (bright moment,
+     then fades down) rather than the line just staying lit at full brightness forever.
+     edge-blink's 100% keyframe matches this exactly (held via forwards) so there's no snap
+     between the animation ending and this steady-state rule taking over. */
+  opacity: 0.7;
+  filter: drop-shadow(0 0 2px rgba(234, 246, 255, 0.4));
+  animation: edge-blink 420ms ease-out forwards;
 }
 
-/* The moment an edge is actually being crossed: a laser that draws itself in at exactly the
-   hop's real travel time, via stroke-dashoffset animating from --len (fully hidden, over the
-   dotted base) to 0 (fully drawn). Once the hop commits, this unmounts and .traveledEdge (already
-   visually identical to its end state) takes over seamlessly. */
+@keyframes edge-blink {
+  0% {
+    opacity: 0.5;
+    filter: drop-shadow(0 0 12px rgba(255, 255, 255, 1)) brightness(2.4);
+  }
+  100% {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 2px rgba(234, 246, 255, 0.4));
+  }
+}
+
+/* The moment an edge is actually being crossed: a faint preview line drawn straight from the
+   source node to the walker's live interpolated position from useInterpolatedPositions — which is
+   also the exact value WalkerToken's translate() is set to each frame (no CSS transition in
+   between), so line endpoint and ship cannot drift apart. Earlier versions animated
+   stroke-dashoffset on a fixed timing curve, and later versions let the ship glide on a CSS
+   transition while this endpoint followed a JS lerp — both desynced, because any two separately
+   clocked/eased animations of the same hop eventually disagree. One shared value per frame is the
+   only arrangement that stays exact. */
 .revealOverlay {
   fill: none;
   stroke: #ffffff;
-  stroke-width: 2.4;
+  stroke-width: calc(2.4px * var(--view-scale, 1));
   stroke-linecap: round;
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
-  animation-name: edgeReveal;
-  /* Matches WalkerToken's .position transition curve exactly — same duration, same easing —
-     so the drawn line and the ship glide stay pinned together throughout the hop instead of
-     just agreeing at the two endpoints. A linear draw against an ease-in-out ship visibly
-     drifted ahead of/behind the ship mid-flight even though both finished at the same time. */
-  animation-timing-function: ease-in-out;
-  animation-fill-mode: forwards;
-}
-
-@keyframes edgeReveal {
-  from {
-    stroke-dashoffset: var(--len);
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
+  opacity: 0.45;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.55));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .revealOverlay {
+  .traveledEdge {
     animation: none;
-    stroke-dashoffset: 0;
   }
   .dustStar {
     animation: none;
+  }
+  .nodeEnter {
+    animation: none;
+    opacity: 1;
   }
 }
 
@@ -123,9 +140,34 @@
   /* A dim, seen-but-unvisited star — not blank. */
   fill: #7a86b8;
   stroke: none;
-  opacity: 0;
-  animation: fade-in 300ms ease-out forwards;
   transition: fill 150ms ease;
+}
+
+/* Wraps a newly-discovered node's layers (glow circles + core + beacon sparkle) so the
+   reveal animates as one unit, fading/scaling in on top of each layer's already-correct
+   static opacity — rather than animating opacity on the layers themselves, which would
+   fight (and, via forwards fill, permanently override) their individual glow-falloff
+   opacities. transform-origin is also set inline per-node in GraphView.tsx, pinning the
+   scale-pop to the node's own (x, y) instead of the SVG viewport origin. */
+.nodeEnter {
+  opacity: 0;
+  animation: node-appear 300ms ease-out forwards;
+  transform-origin: center;
+}
+
+@keyframes node-appear {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Three layers of an actual glowing star, not one circle with a token blur filter standing in
@@ -161,6 +203,126 @@
   fill: #ff4d4d;
 }
 
+/* Neutron stars — Scanner Array pickups (see game/scannerWiring/neutronStars.ts). Laser green like
+   the array's wiring, with a pulsing halo until a walker collects one; spent ones keep a dim green
+   cast so the player can still see where they were. Declared after .visited so they win over it,
+   and before the strategy highlights so those (gameplay-critical) still win over them. */
+.neutronStar {
+  fill: var(--wire);
+}
+
+.neutronStarSpent {
+  fill: #3f7a58;
+}
+
+.starOuterGlow.neutronStar {
+  opacity: 0.12;
+}
+
+.starMidGlow.neutronStar {
+  animation: neutron-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes neutron-pulse {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starMidGlow.neutronStar {
+    animation: none;
+    opacity: 0.3;
+  }
+}
+
+/* Keys (see game/keys/keys.ts): gold, pulsing until some walker collects one; collected keys keep
+   a dim brass cast. Same layering rules as neutron stars: after .visited, before the strategy
+   highlights. Lighter than the DFS .inStack amber, so the two never read as the same thing. */
+.key {
+  fill: #ffd84a;
+}
+
+.keySpent {
+  fill: #8a7a3c;
+}
+
+.starOuterGlow.key {
+  opacity: 0.14;
+}
+
+.starMidGlow.key {
+  animation: key-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes key-pulse {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* The exit while keys remain: drained of its red, so it reads as "not yet". */
+.goal.goalLocked {
+  fill: #6b5a5a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starMidGlow.key {
+    animation: none;
+    opacity: 0.35;
+  }
+}
+
+
+/* Pulsar marker over every uncollected neutron star, drawn even under fog (see GraphView.tsx):
+   a hot blue-white core, a breathing halo, and two rotating green beams. Nothing else on the map
+   has this shape, so it reads at a glance and survives strategy highlight colors. */
+.pulsarLayer {
+  pointer-events: none;
+}
+
+.pulsarHalo {
+  fill: var(--wire);
+  opacity: 0.18;
+  filter: blur(calc(4px * var(--view-scale, 1)));
+  animation: pulsar-breathe 1.6s ease-in-out infinite;
+}
+
+.pulsarBeam {
+  fill: var(--wire);
+  opacity: 0.75;
+  filter: blur(calc(0.6px * var(--view-scale, 1)));
+}
+
+.pulsarCore {
+  fill: #e6f6ff;
+  filter: drop-shadow(0 0 calc(3px * var(--view-scale, 1)) rgba(186, 230, 253, 0.95));
+}
+
+@keyframes pulsar-breathe {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: 0.32;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulsarHalo {
+    animation: none;
+  }
+}
+
 /* The sparkle glyph (see #star-sparkle in GraphView.tsx) — only start/goal get one, so it reads
    as a deliberate glint rather than clutter on every star. */
 .sparkleStart {
@@ -175,7 +337,7 @@
 
 .currentNode {
   stroke: #ffffff;
-  stroke-width: 1.5;
+  stroke-width: calc(1.5px * var(--view-scale, 1));
   filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9));
 }
 
@@ -202,6 +364,10 @@
   fill: #ec4899;
 }
 
+.trailNode {
+  fill: #a855f7;
+}
+
 /* The core needs to be visibly BRIGHTER than its own halo, not just more opaque — two layers of
    the exact same color just read as one blurry blob with no "there's a light source here" pop.
    Each state gets a lightened core override here, combined-selector specificity wins over the
@@ -222,6 +388,26 @@
   fill: #ffd1d1;
 }
 
+.starCore.neutronStar {
+  fill: #c9ffdc;
+}
+
+.starCore.neutronStarSpent {
+  fill: #7fb894;
+}
+
+.starCore.key {
+  fill: #fff4c2;
+}
+
+.starCore.keySpent {
+  fill: #b8a868;
+}
+
+.starCore.goal.goalLocked {
+  fill: #b9a9a9;
+}
+
 .starCore.inMemory {
   fill: #bdf5d0;
 }
@@ -236,6 +422,10 @@
 
 .starCore.frontier {
   fill: #b0f0e6;
+}
+
+.starCore.trailNode {
+  fill: #e4ccfb;
 }
 
 .starCore.plannedPath {
@@ -254,20 +444,20 @@
 .burstRing {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 4;
+  stroke-width: calc(4px * var(--view-scale, 1));
   opacity: 0;
   animation: burst 1.8s ease-out forwards;
 }
 
 @keyframes burst {
   0% {
-    r: 10;
-    stroke-width: 4;
+    r: calc(10px * var(--view-scale, 1));
+    stroke-width: calc(4px * var(--view-scale, 1));
     opacity: 0.9;
   }
   100% {
-    r: 100;
-    stroke-width: 0.5;
+    r: calc(100px * var(--view-scale, 1));
+    stroke-width: calc(0.5px * var(--view-scale, 1));
     opacity: 0;
   }
 }

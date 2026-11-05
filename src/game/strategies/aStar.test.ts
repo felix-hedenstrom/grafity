@@ -43,8 +43,8 @@ function discoveryWithGoalKnown(graph: Graph, visited: string[] = ['hub']): Disc
 }
 
 describe('aStar', () => {
-  it('has a 1x memory multiplier', () => {
-    expect(aStar.memoryMultiplier).toBe(1)
+  it('has a 3x memory multiplier', () => {
+    expect(aStar.memoryMultiplier).toBe(3)
   })
 
   it('does not know where the goal is until it has actually discovered it — no beeline, behaves like Dijkstra', () => {
@@ -101,6 +101,62 @@ describe('aStar', () => {
     // The only legal next step is 'a' — the route through undiscovered 'b' can't be planned, even
     // though the true graph puts the goal just two hops away via it.
     expect(aStar.chooseNextNode(ctx)).toBe('a')
+  })
+
+  it('falls back to frontier-seeking when the discovered goal sits on a disconnected island (not a random hop)', () => {
+    // hub -- fwd -- frontier -- x(undiscovered) -- goal, plus hub -- dead (a visited dead end).
+    // The goal is discovered (a Reverse Beacon walker revealed it from the other side) but no
+    // discovered route reaches it — A* must hunt the frontier via 'fwd', never wander into 'dead'.
+    const adjacency = { hub: ['fwd', 'dead'], fwd: ['hub', 'frontier'], frontier: ['fwd', 'x'], x: ['frontier', 'goal'], goal: ['x'], dead: ['hub'] }
+    const graph: Graph = {
+      nodes: Object.keys(adjacency).map((id, i) => ({ id, isStart: id === 'hub', isGoal: id === 'goal', x: i * 10, y: 0 })),
+      edges: [
+        { id: 'hub--fwd', source: 'hub', target: 'fwd' },
+        { id: 'fwd--frontier', source: 'fwd', target: 'frontier' },
+        { id: 'frontier--x', source: 'frontier', target: 'x' },
+        { id: 'x--goal', source: 'x', target: 'goal' },
+        { id: 'hub--dead', source: 'hub', target: 'dead' },
+      ],
+      startNodeId: 'hub',
+      goalNodeId: 'goal',
+      adjacency,
+    }
+    const walker = createWalker('hub')
+    const discovery: DiscoveryState = {
+      discoveredNodeIds: new Set(['hub', 'fwd', 'frontier', 'goal', 'dead']), // 'x' still fog
+      discoveredEdgeIds: new Set<string>(),
+      visitedNodeIds: new Set(['hub', 'fwd', 'dead']),
+    }
+    const ctx: StrategyContext = { graph, discovery, walker: { ...walker, path: ['dead', 'hub', 'fwd', 'hub'] }, memory: undefined, memoryLevel: 0 }
+
+    expect(aStar.chooseNextNode(ctx)).toBe('fwd')
+  })
+
+  it('a Reverse Beacon walker beelines for targetNodeId (the start side) instead of treating the goal it launched from as its destination', () => {
+    // hub -- m -- goal, with an unvisited side room q off the goal. A walker that still thought
+    // the goal was its destination would consider itself arrived (and frontier-hunt toward q);
+    // one aiming at targetNodeId must march down the corridor toward hub.
+    const adjacency = { hub: ['m'], m: ['hub', 'goal'], goal: ['m', 'q'], q: ['goal'] }
+    const graph: Graph = {
+      nodes: Object.keys(adjacency).map((id, i) => ({ id, isStart: id === 'hub', isGoal: id === 'goal', x: i * 10, y: 0 })),
+      edges: [
+        { id: 'hub--m', source: 'hub', target: 'm' },
+        { id: 'm--goal', source: 'm', target: 'goal' },
+        { id: 'goal--q', source: 'goal', target: 'q' },
+      ],
+      startNodeId: 'hub',
+      goalNodeId: 'goal',
+      adjacency,
+    }
+    const walker = { ...createWalker('goal', 'goal'), path: ['hub', 'm', 'goal'] }
+    const discovery: DiscoveryState = {
+      discoveredNodeIds: new Set(['hub', 'm', 'goal', 'q']),
+      discoveredEdgeIds: new Set<string>(),
+      visitedNodeIds: new Set(['hub', 'm', 'goal']),
+    }
+    const ctx: StrategyContext = { graph, discovery, walker, memory: undefined, memoryLevel: 0, targetNodeId: 'hub' }
+
+    expect(aStar.chooseNextNode(ctx)).toBe('m')
   })
 
   it('routes around a node excluded by Traffic Control, even once the goal is known', () => {

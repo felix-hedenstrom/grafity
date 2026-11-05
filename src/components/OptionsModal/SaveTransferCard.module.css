@@ -1,0 +1,20 @@
+.pasteArea {
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+
+.error {
+  font-size: 13px;
+  color: #e5484d;
+  margin-top: 8px;
+}

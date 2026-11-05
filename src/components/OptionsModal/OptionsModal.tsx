@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { Modal } from '../Modal/Modal'
 import { ResetButton } from '../Controls/ResetButton'
+import { SaveTransferCard } from './SaveTransferCard'
 import { useProgressionStore, STARTING_GRAPH_NODE_COUNT } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
 import { useUiStore } from '../../store/useUiStore'
@@ -66,6 +67,7 @@ export function OptionsModal() {
             Reset level
           </button>
         </div>
+        <SaveTransferCard />
         <div className={styles.card}>
           <div className={styles.name}>Hard reset progress</div>
           <div className={styles.description}>Wipes currency, upgrades, achievements, and the level back to the very start.</div>

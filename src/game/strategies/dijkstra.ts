@@ -1,20 +1,21 @@
 import { pickRandom } from '../../utils/rng'
+import { plannableFn } from './memory'
 import { actualWeight, nextHopToward } from './pathfinding'
 import type { TraversalStrategy } from './types'
 
 export const dijkstra: TraversalStrategy = {
   id: 'dijkstra',
   name: 'Dijkstra',
-  memoryMultiplier: 1,
+  memoryMultiplier: 2,
   chooseNextNode(ctx) {
-    const { graph, discovery, walker, excludedNodeIds } = ctx
+    const { graph, discovery, walker } = ctx
     const next = nextHopToward(
       graph,
       walker.currentNodeId,
       (id) => discovery.discoveredNodeIds.has(id) && !discovery.visitedNodeIds.has(id),
       actualWeight,
       undefined,
-      (id) => discovery.discoveredNodeIds.has(id) && !excludedNodeIds?.has(id),
+      plannableFn(ctx),
     )
     return next ?? pickRandom(Math.random, graph.adjacency[walker.currentNodeId])
   },

@@ -1,0 +1,34 @@
+.compass {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.dial {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.needleGroup {
+  /* Smooths the needle between interpolation frames instead of ticking. */
+  transition: transform 120ms linear;
+}
+
+.needle {
+  fill: var(--accent-border);
+}
+
+.pivot {
+  fill: var(--text-h);
+}

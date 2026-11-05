@@ -10,14 +10,14 @@ function baseContext(overrides: Partial<AchievementContext> = {}): AchievementCo
     purchasedUpgradeIds: [],
     activeStrategyId: 'random-walk',
     defaultStrategyId: 'random-walk',
-    momentumLevel: 0,
+    momentumOwned: false,
     memoryLevel: 0,
     deepMemoryLevel: 0,
     expansionLevel: 0,
     amplifierLevel: 0,
-    quickStepsLevel: 0,
     searcherLevel: 0,
-    clarityLevel: 0,
+    ftlLevel: 0,
+    bidirectionalOwned: false,
     currencyAmount: 0,
     discoveredCount: 0,
     totalNodes: 7,
@@ -63,28 +63,24 @@ describe('evaluateAchievements', () => {
     expect(evaluateAchievements(all, [])).toContain('algorithm-collector')
   })
 
-  it('unlocks fully-loaded only once every repeatable has at least level 1', () => {
+  it('unlocks fully-loaded only once Momentum is owned and every repeatable has at least level 1', () => {
     const missingOne = baseContext({
-      momentumLevel: 1,
+      momentumOwned: true,
       memoryLevel: 1,
       expansionLevel: 1,
       amplifierLevel: 1,
       deepMemoryLevel: 1,
-      quickStepsLevel: 1,
-      searcherLevel: 1,
-      clarityLevel: 0, // the one holdout
+      searcherLevel: 0, // the one holdout
     })
     expect(evaluateAchievements(missingOne, [])).not.toContain('fully-loaded')
 
     const allLeveled = baseContext({
-      momentumLevel: 1,
+      momentumOwned: true,
       memoryLevel: 1,
       expansionLevel: 1,
       amplifierLevel: 1,
       deepMemoryLevel: 1,
-      quickStepsLevel: 1,
       searcherLevel: 1,
-      clarityLevel: 1,
     })
     expect(evaluateAchievements(allLeveled, [])).toContain('fully-loaded')
   })

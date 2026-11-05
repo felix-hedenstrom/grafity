@@ -1,0 +1,63 @@
+/* Column of pickup counters stacked directly above the scale bar (ScaleBar.module.css: bottom
+   12px, ~35px tall). Positioned on its own, so the scale bar's styling and placement stay untouched.
+   column-reverse: the first counter (keys) sits nearest the scale bar. */
+.stack {
+  position: absolute;
+  left: 12px;
+  bottom: 53px;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.counter {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-h);
+  white-space: nowrap;
+}
+
+/* --pickup-color is set inline per kind, matching that pickup's color on the map. */
+.icon {
+  color: var(--pickup-color);
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.complete {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+/* Restarted (via React key) each time another pickup is collected. */
+.pulse {
+  animation: pickupPulse 900ms ease-out;
+}
+
+@keyframes pickupPulse {
+  0% {
+    border-color: var(--pickup-color);
+    box-shadow: 0 0 0 0 var(--pickup-color);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+}

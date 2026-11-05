@@ -1,0 +1,31 @@
+/**
+ * Purple theme for the Prestige Shop, layered on top of Modal's shared .panel class — marks this
+ * modal as a distinct, special mechanic rather than a plain settings/info panel. Targets Modal's
+ * header/title by DOM position (panel's first child is the header, whose first child is the
+ * title) rather than by class name, since Modal.module.css's classes are locally scoped and can't
+ * be reached by name from here.
+ */
+.purplePanel {
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 24px var(--accent-bg);
+}
+
+.purplePanel > div:first-child {
+  background: var(--accent-bg);
+  border-bottom: 1px solid var(--accent-border);
+}
+
+.purplePanel > div:first-child > div:first-child {
+  color: var(--accent);
+}
+
+/** The Nebula summary card — purple like the panel, so it reads as the one box this whole shop
+ * revolves around, distinct from the plain upgrade cards below it. */
+.prestigeInfoCard {
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  text-align: left;
+  background: var(--accent-bg);
+}
+

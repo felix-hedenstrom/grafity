@@ -4,6 +4,10 @@ export interface GraphNode {
   id: NodeId
   isStart: boolean
   isGoal: boolean
+  /** A Scanner Array pickup — the first walker to visit it adds a sensor. See game/scannerWiring/neutronStars.ts. */
+  isNeutronStar?: boolean
+  /** A key — the exit stays locked until some walker has visited every key. See game/keys/keys.ts. */
+  isKey?: boolean
   /** Set by the force-layout simulation; absent before layout has run. */
   x?: number
   y?: number

@@ -1,0 +1,111 @@
+/**
+ * The Scanner Array — a deep-space wiring panel with laser-green wire, layered on Modal's shared
+ * shell (header/title reached by DOM position, as in PrestigeShopModal.module.css, since Modal's
+ * classes are locally scoped). The board itself stays dark in both themes: it's a view into space.
+ */
+.panel {
+  max-width: 640px;
+  border: 2px solid var(--wire-border);
+  box-shadow: 0 0 24px var(--wire-bg);
+}
+
+.panel > div:first-child {
+  background: var(--wire-bg);
+  border-bottom: 1px solid var(--wire-border);
+}
+
+.panel > div:first-child > div:first-child {
+  color: var(--wire);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.flavor,
+.hint,
+.darklyBot {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.darklyBot {
+  color: var(--wire);
+  font-style: italic;
+}
+
+.boardWrap {
+  position: relative;
+}
+
+.board {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--wire-border);
+  background: radial-gradient(ellipse at 30% 20%, #10202a 0%, var(--wire-panel) 70%);
+  user-select: none;
+}
+
+.backgroundStar {
+  fill: #cbd5e1;
+  opacity: 0.35;
+}
+
+.wire {
+  fill: none;
+  stroke: var(--wire);
+  stroke-width: 0.005;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The two wires Darkly-bot is currently swapping — a touch brighter and thicker, so the eye finds the motion. */
+.wireMoving {
+  stroke: #b6f7cc;
+  stroke-width: 0.006;
+}
+
+.ghostWire {
+  fill: none;
+  stroke: var(--wire);
+  stroke-width: 0.003;
+  stroke-dasharray: 0.01 0.008;
+  opacity: 0.3;
+}
+
+.sensor {
+  fill: #0b1a14;
+  stroke: #e2e8f0;
+  stroke-width: 0.004;
+}
+
+.sensorWired {
+  fill: var(--wire);
+  stroke: var(--wire);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 16px;
+  font-size: 14px;
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.stats > span:nth-child(even) {
+  text-align: right;
+  color: var(--text-h);
+}
+
+.total {
+  margin-top: 4px;
+  font-weight: 600;
+  color: var(--wire) !important;
+}

@@ -47,14 +47,14 @@ describe('randomWalk', () => {
     }
   })
 
-  it('ignores memory entirely at level 0 — any neighbor is possible', () => {
+  it('still avoids the immediate previous node at level 0 — only the free 1-step backtrack guard applies', () => {
     const graph = fixedGraph()
-    const walker = { ...createWalker('a'), path: ['b', 'a', 'b', 'a'] }
+    const walker = { ...createWalker('a'), previousNodeId: 'b', path: ['b', 'a', 'b', 'a'] }
     const ctx: StrategyContext = { graph, discovery: createDiscovery(graph, 'a'), walker, memory: undefined, memoryLevel: 0 }
 
     const seen = new Set<string>()
     for (let i = 0; i < 200; i++) seen.add(randomWalk.chooseNextNode(ctx))
-    expect(seen).toEqual(new Set(['b', 'c', 'd']))
+    expect(seen).toEqual(new Set(['c', 'd']))
   })
 
   it('avoids a remembered node once memoryLevel > 0', () => {

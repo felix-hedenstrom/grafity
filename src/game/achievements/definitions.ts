@@ -24,7 +24,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'level-1000',
     name: 'Off the Charts',
-    description: 'Reached level 1000 — and thanks to Clarity and a smarter camera, you can actually still see it.',
+    description: 'Reached level 1000 — and thanks to a smarter camera, you can actually still see it.',
     check: (ctx) => ctx.highestGraphNodeCount >= 1000,
   },
   {
@@ -42,22 +42,20 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'algorithm-collector',
     name: 'Algorithm Collector',
-    description: 'Own every traversal strategy, from Least Visited to Bidirectional Search.',
+    description: 'Own every traversal strategy, from Least Visited to Swarm Search.',
     check: (ctx) => UPGRADES.every((upgrade) => ctx.purchasedUpgradeIds.includes(upgrade.id)),
   },
   {
     id: 'fully-loaded',
     name: 'Fully Loaded',
-    description: 'At least one level in every repeatable upgrade.',
+    description: 'Own Momentum and at least one level in every repeatable upgrade.',
     check: (ctx) =>
-      ctx.momentumLevel >= 1 &&
+      ctx.momentumOwned &&
       ctx.memoryLevel >= 1 &&
       ctx.expansionLevel >= 1 &&
       ctx.amplifierLevel >= 1 &&
       ctx.deepMemoryLevel >= 1 &&
-      ctx.quickStepsLevel >= 1 &&
-      ctx.searcherLevel >= 1 &&
-      ctx.clarityLevel >= 1,
+      ctx.searcherLevel >= 1,
   },
   {
     id: 'swarm-tactics',
@@ -78,16 +76,10 @@ export const ACHIEVEMENTS: Achievement[] = [
     check: (ctx) => ctx.memoryLevel >= 50,
   },
   {
-    id: 'clarity-of-mind',
-    name: 'Clarity of Mind',
-    description: 'Unlocked Clarity — the graph practically untangles itself now.',
-    check: (ctx) => ctx.clarityLevel >= 10,
-  },
-  {
     id: 'meet-in-the-middle',
     name: 'Meet in the Middle',
-    description: 'Unlocked Bidirectional Search — Spaceship and UFO, one handshake.',
-    check: (ctx) => ctx.purchasedUpgradeIds.includes('bidirectional'),
+    description: 'Bought the Reverse Beacon — Spaceship and UFO, one handshake.',
+    check: (ctx) => ctx.bidirectionalOwned,
   },
   {
     id: 'insight-hoarder',
@@ -104,8 +96,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'speed-demon',
     name: 'Speed Demon',
-    description: '20 levels of Quick Steps — the Spaceship is basically a blur now.',
-    check: (ctx) => ctx.quickStepsLevel >= 20,
+    description: '20 levels of FTL — the speed of light is more of a suggestion at this point.',
+    check: (ctx) => ctx.ftlLevel >= 20,
   },
   {
     id: 'no-stone-unturned',

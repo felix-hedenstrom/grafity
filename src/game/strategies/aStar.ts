@@ -1,44 +1,59 @@
 import { pickRandom } from '../../utils/rng'
-import { actualWeight, nextHopToward, shortestPathToward, straightLineDistance } from './pathfinding'
+import type { NodeId } from '../graph/types'
+import { plannableFn } from './memory'
+import { actualWeight, shortestPathToward, straightLineDistance } from './pathfinding'
 import type { StrategyContext, TraversalStrategy } from './types'
 
-/** A* can only beeline for the actual exit once the walker has actually seen it — otherwise it has
- * no more information than Dijkstra and heads for whatever's nearest discovered-but-unvisited. */
-function isTargetFn(ctx: StrategyContext): (id: string) => boolean {
-  const { discovery, graph } = ctx
-  if (discovery.discoveredNodeIds.has(graph.goalNodeId)) {
-    return (id: string) => id === graph.goalNodeId
+/**
+ * The full planned route, two-stage: once the walker's destination (the exit — or the start node,
+ * for a Reverse Beacon walker launched from the exit) has been discovered, beeline for it with the
+ * straight-line heuristic (admissible, since edge cost is itself Euclidean distance). If no route
+ * to it survives plannableFn — it sits on a discovered island not yet connected to this walker's
+ * territory, or the remembered corridor to it has been forgotten — fall back to hunting the
+ * nearest discovered-but-unvisited node, exactly like Dijkstra. Null only when even the frontier
+ * is unreachable (the caller then picks a random neighbor).
+ */
+function planPath(ctx: StrategyContext): NodeId[] | null {
+  const { graph, discovery, walker } = ctx
+  const target = ctx.targetNodeId ?? graph.goalNodeId
+  const plannable = plannableFn(ctx)
+
+  if (discovery.discoveredNodeIds.has(target)) {
+    const nodesById = new Map(graph.nodes.map((n) => [n.id, n]))
+    const toTarget = shortestPathToward(
+      graph,
+      walker.currentNodeId,
+      (id) => id === target,
+      actualWeight,
+      (id) => straightLineDistance(id, target, nodesById),
+      plannable,
+    )
+    if (toTarget) return toTarget
   }
-  return (id: string) => discovery.discoveredNodeIds.has(id) && !discovery.visitedNodeIds.has(id)
-}
 
-/** Straight-line-to-goal heuristic once the goal is known; otherwise no bias, same as Dijkstra. */
-function heuristicFn(ctx: StrategyContext): (id: string) => number {
-  const { discovery, graph } = ctx
-  if (!discovery.discoveredNodeIds.has(graph.goalNodeId)) return () => 0
-  const nodesById = new Map(graph.nodes.map((n) => [n.id, n]))
-  const goalId = graph.goalNodeId
-  return (id: string) => straightLineDistance(id, goalId, nodesById)
-}
-
-/** Only discovered territory can be searched through or targeted — the walker can't plan routes through fog. Also excludes any node currently claimed by another walker, while Traffic Control is active. */
-function isReachableFn(ctx: StrategyContext): (id: string) => boolean {
-  return (id: string) => ctx.discovery.discoveredNodeIds.has(id) && !ctx.excludedNodeIds?.has(id)
+  return shortestPathToward(
+    graph,
+    walker.currentNodeId,
+    (id) => discovery.discoveredNodeIds.has(id) && !discovery.visitedNodeIds.has(id),
+    actualWeight,
+    undefined,
+    plannable,
+  )
 }
 
 export const aStar: TraversalStrategy = {
   id: 'a-star',
   name: 'A*',
-  memoryMultiplier: 1,
+  memoryMultiplier: 3,
   chooseNextNode(ctx) {
-    const { graph, walker } = ctx
-    const next = nextHopToward(graph, walker.currentNodeId, isTargetFn(ctx), actualWeight, heuristicFn(ctx), isReachableFn(ctx))
-    return next ?? pickRandom(Math.random, graph.adjacency[walker.currentNodeId])
+    const path = planPath(ctx)
+    return path?.[1] ?? pickRandom(Math.random, ctx.graph.adjacency[ctx.walker.currentNodeId])
   },
   getHighlightedNodes(ctx) {
     const { graph, discovery, walker } = ctx
-    if (discovery.discoveredNodeIds.has(graph.goalNodeId)) {
-      const path = shortestPathToward(graph, walker.currentNodeId, isTargetFn(ctx), actualWeight, heuristicFn(ctx), isReachableFn(ctx))
+    const target = ctx.targetNodeId ?? graph.goalNodeId
+    if (discovery.discoveredNodeIds.has(target)) {
+      const path = planPath(ctx)
       return [{ kind: 'path', nodeIds: new Set(path ?? [walker.currentNodeId]) }]
     }
     const frontier = [...discovery.discoveredNodeIds].filter((id) => !discovery.visitedNodeIds.has(id))

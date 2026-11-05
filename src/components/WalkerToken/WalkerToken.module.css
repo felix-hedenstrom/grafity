@@ -1,10 +1,7 @@
-.position {
-  transition-property: transform;
-  /* Eases out of the orbit hold and into the travel glide instead of snapping straight into a
-     constant-speed line — most noticeable on short hops where linear made the launch feel
-     instantaneous. */
-  transition-timing-function: ease-in-out;
-}
+/* .position's transform is set inline from the caller's per-frame interpolated x/y — deliberately
+   NO transition here. A transform transition on this group would re-animate toward each frame's
+   new value, lagging the ship behind the reveal-line endpoint and camera that read the same
+   interpolation directly. */
 
 .heading {
   /* Rotate around this group's own local (0,0) — the node anchor point set by the outer
@@ -16,62 +13,63 @@
      user-space coordinates, so 0px 0px lands exactly on local (0,0) regardless of shape
      bounds, with no fill-box needed. */
   transform-origin: 0px 0px;
-  /* Covers the moment discoveringOrbit is removed: without this, the ship's heading snaps from
-     wherever it was mid-loop straight to rotate(angle). With it, that drop gets picked up as a
-     transition instead and eases into the travel heading. */
+  /* Eases normal heading turns (new edge, retrograde flip), and carries the hand-off out of the
+     discovering orbit: useNodeOrbit suspends this transition (inline) for the orbit's per-frame
+     writes, then restores it on exit so the last orbit frame eases into the travel heading. */
   transition: transform 220ms ease-out;
 }
 
-/* Discovering, for every ship class: a real orbit around the node — translate+rotate every
-   step, so the rotation happens around each step's own freshly-translated local origin and
-   never needs transform-origin at all (same reason this needed no fill-box trick in the
-   original mockup).
-   Nose stays tangent to the circle throughout. 8 steps around a circle whose radius is driven by
-   --orbit-r (set per-instance from the actual node's rendered size, see WalkerToken.tsx) — a
-   degree-4 hub's orbit is visibly wider than a plain degree-2 star's, instead of one fixed size
-   that either clips through big stars or looks lost next to small ones. Each step multiplies
-   --orbit-r by that angle's cos/sin so the circle's actual radius can vary per instance while
-   the keyframe shape itself stays static CSS. */
-@keyframes orbitInPlace {
-  0% {
-    transform: translate(var(--orbit-r, 26px), 0px) rotate(90deg);
-  }
-  12.5% {
-    transform: translate(calc(var(--orbit-r, 26px) * 0.7071), calc(var(--orbit-r, 26px) * 0.7071)) rotate(135deg);
-  }
-  25% {
-    transform: translate(0px, var(--orbit-r, 26px)) rotate(180deg);
-  }
-  37.5% {
-    transform: translate(calc(var(--orbit-r, 26px) * -0.7071), calc(var(--orbit-r, 26px) * 0.7071)) rotate(225deg);
-  }
-  50% {
-    transform: translate(calc(var(--orbit-r, 26px) * -1), 0px) rotate(270deg);
-  }
-  62.5% {
-    transform: translate(calc(var(--orbit-r, 26px) * -0.7071), calc(var(--orbit-r, 26px) * -0.7071)) rotate(315deg);
-  }
-  75% {
-    transform: translate(0px, calc(var(--orbit-r, 26px) * -1)) rotate(360deg);
-  }
-  87.5% {
-    transform: translate(calc(var(--orbit-r, 26px) * 0.7071), calc(var(--orbit-r, 26px) * -0.7071)) rotate(405deg);
-  }
-  100% {
-    transform: translate(var(--orbit-r, 26px), 0px) rotate(450deg);
-  }
-}
+/* The discovering orbit itself is rAF-driven (useNodeOrbit.ts + orbitMath.ts) — a spiral out of
+   the node center, a cruise, and a spiral back to rest, timed to fill the discover wait exactly —
+   so it has no keyframes here; it writes .heading's transform imperatively. */
 
-.discoveringOrbit {
-  animation: orbitInPlace 1.1s linear infinite;
-}
-
-/* ---------- main ship: a dart-hulled rocket ---------- */
+/* ---------- main ship: A-wing-inspired hull with twin wingtip engines ---------- */
 
 .hull {
+  fill: url(#hullGrad);
+  stroke: #20232c;
+  stroke-width: 0.6;
+}
+
+.hullPanelLine {
+  stroke: #4a4e5c;
+  stroke-width: 0.25;
+  opacity: 0.8;
+}
+
+.accent {
   fill: #ff8c3a;
-  stroke: #160a26;
-  stroke-width: 1;
+  stroke: #20232c;
+  stroke-width: 0.3;
+}
+
+.barrel {
+  fill: #2c3047;
+}
+
+.metal {
+  stroke: #14172a;
+  stroke-width: 0.35;
+}
+
+.canopyFrame {
+  stroke: #ff8c3a;
+  stroke-width: 0.4;
+  fill: #1b2030;
+}
+
+.canopyGlass {
+  fill: url(#glassGrad);
+}
+
+.canopyDivider {
+  stroke: #0c0f1c;
+  stroke-width: 0.3;
+}
+
+.canopyShine {
+  fill: #ffffff;
+  opacity: 0.45;
 }
 
 .hullHalo {
@@ -80,58 +78,143 @@
   filter: blur(1.2px);
 }
 
-.cockpitOuter {
-  fill: #ffffff;
+.nozzleRim {
+  opacity: 0.38;
+  transition: opacity 220ms ease-out;
 }
 
-.cockpitInner {
-  fill: #6ee7ff;
+.nozzleRimActive {
+  opacity: 1;
+  filter: drop-shadow(0 0 3px rgba(255, 200, 120, 0.9));
 }
 
-@keyframes exhaustFlickerOuter {
+/* Hidden by default — not unmounted, since unmounting would shrink the group's fill-box and
+   shift the rotation pivot set on .heading. Only .flameActive (applied while thrust is actually
+   firing: the ramp-up and, if this transit brakes, the retrograde burn — never during the
+   flat-speed cruise segment in between, nor while sitting still) turns it on. */
+.flameRig {
+  opacity: 0;
+  transition: opacity 220ms ease-out;
+}
+
+.flameActive {
+  opacity: 1;
+}
+
+.plume {
+  mix-blend-mode: screen;
+  filter: drop-shadow(0 0 6px rgba(255, 90, 20, 0.6)) drop-shadow(0 0 14px rgba(255, 50, 10, 0.35));
+}
+
+.outerBase {
+  transform-origin: -5px 0px;
+  animation: outerFlickerBase 0.9s ease-in-out infinite;
+}
+
+.outerA {
+  transform-origin: -5px 0px;
+  animation: outerFlickerA 0.7s ease-in-out infinite;
+  animation-delay: 0.12s;
+}
+
+.mid {
+  transform-origin: -5px 0px;
+  animation: midFlicker 0.55s ease-in-out infinite;
+}
+
+.core {
+  transform-origin: -5px 0px;
+  animation: coreFlicker 0.4s ease-in-out infinite;
+}
+
+@keyframes outerFlickerBase {
   0%,
   100% {
-    opacity: 0.55;
+    transform: scaleX(0.9) scaleY(0.94);
+    opacity: 0.85;
   }
   40% {
-    opacity: 0.9;
-  }
-  70% {
-    opacity: 0.4;
-  }
-}
-
-@keyframes exhaustFlickerCore {
-  0%,
-  100% {
-    opacity: 0.8;
-  }
-  30% {
+    transform: scaleX(1.12) scaleY(1.06);
     opacity: 1;
   }
-  65% {
-    opacity: 0.5;
+  75% {
+    transform: scaleX(0.96) scaleY(0.9);
+    opacity: 0.8;
   }
 }
 
-.exhaustOuter {
-  fill: rgba(255, 216, 154, 0.75);
-  animation: exhaustFlickerOuter 1.3s ease-in-out infinite;
-  transition: opacity 220ms ease-out;
+@keyframes outerFlickerA {
+  0%,
+  100% {
+    transform: scaleX(0.82) scaleY(0.9);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scaleX(1.04) scaleY(1.02);
+    opacity: 0.75;
+  }
 }
 
-.exhaustCore {
-  fill: rgba(255, 246, 224, 0.9);
-  animation: exhaustFlickerCore 0.8s ease-in-out infinite;
-  transition: opacity 220ms ease-out;
+@keyframes midFlicker {
+  0%,
+  100% {
+    transform: scaleX(0.88);
+    opacity: 0.9;
+  }
+  45% {
+    transform: scaleX(1.14);
+    opacity: 1;
+  }
+  80% {
+    transform: scaleX(0.95);
+    opacity: 0.85;
+  }
 }
 
-/* Hides the exhaust while discovering without unmounting it — unmounting would shrink the
-   group's fill-box and shift the rotation pivot set on .heading. The transitions above fade it
-   in/out instead of an instant toggle, so it catches up with the heading's own ease on launch. */
-.exhaustHidden {
+@keyframes coreFlicker {
+  0%,
+  100% {
+    transform: scaleX(0.86);
+    opacity: 0.95;
+  }
+  50% {
+    transform: scaleX(1.2);
+    opacity: 1;
+  }
+}
+
+/* Smoke fades out slower (900ms) than it fades in (150ms, overridden by .flameActive below) so
+   it visibly lingers after a burn cuts — most noticeable at the decel → idle handoff. */
+.smoke {
   opacity: 0;
-  animation: none;
+  transition: opacity 900ms ease-out;
+}
+
+.flameActive .smoke {
+  opacity: 1;
+  transition: opacity 150ms ease-out;
+}
+
+.smoke circle {
+  fill: #6b6a66;
+  filter: blur(2.4px);
+  opacity: 0;
+  animation: smokeDrift var(--dur) linear infinite;
+  animation-delay: var(--delay);
+}
+
+@keyframes smokeDrift {
+  0% {
+    transform: translate(0px, 0px) scale(0.55);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.32;
+  }
+  100% {
+    transform: translate(-16px, var(--rise)) scale(2.4);
+    opacity: 0;
+  }
 }
 
 /* ---------- sub-ships: UFO scouts with a green alien riding in the dome ---------- */
@@ -213,10 +296,14 @@
   fill: #ec4899;
 }
 
+/* The discovering orbit honors reduced motion in JS (WalkerToken checks the same media query
+   before activating useNodeOrbit), since it isn't a CSS animation anymore. */
 @media (prefers-reduced-motion: reduce) {
-  .discoveringOrbit,
-  .exhaustOuter,
-  .exhaustCore,
+  .outerBase,
+  .outerA,
+  .mid,
+  .core,
+  .smoke circle,
   .rimLightA,
   .rimLightB,
   .rimLightC {

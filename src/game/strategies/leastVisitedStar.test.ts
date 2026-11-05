@@ -44,8 +44,9 @@ describe('leastVisitedStar', () => {
 
   it('excludes a node claimed by another walker (Traffic Control), even if it is least-visited', () => {
     const graph = hubGraph()
-    // c is never visited (would normally win), but it's claimed by another walker.
-    const walker = { ...createWalker('hub'), path: ['hub', 'a', 'hub', 'a', 'hub', 'b', 'hub'] }
+    // a visited twice, c visited once (and is the node just left), b never visited — b should win
+    // over a even though c is claimed by another walker and so can't be the one to prove it.
+    const walker = { ...createWalker('hub'), path: ['hub', 'a', 'hub', 'a', 'hub', 'c', 'hub'] }
     const ctx: StrategyContext = {
       graph,
       discovery: createDiscovery(graph, 'hub'),

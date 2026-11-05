@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { Graph } from './types'
-import { computeDynamicViewSize, computeGraphBounds, computeViewBounds, MAX_VIEW_SIZE, MIN_GRAPH_VIEW_SIZE, MIN_VIEW_SIZE } from './layout'
+import { computeDynamicViewSize, computeGraphBounds, computeViewBounds, MAX_VIEW_SIZE, MIN_GRAPH_VIEW_SIZE, MIN_VIEW_SIZE, viewScale } from './layout'
+import { PRODUCTION_CONFIG } from '../config/production'
 
-/** A minimal graph with nodes placed wherever the caller wants — computeGraphBounds/computeViewBounds only care about node.x/y, not how a graph got generated. */
-function graphWithPositions(positions: { id: string; x: number; y: number }[]): Graph {
+/** A minimal graph with nodes placed wherever the caller wants — computeGraphBounds/computeViewBounds only care about node.x/y, not how a graph got generated. Edges (for viewScale/minEdgeLength, whose weights are real node-to-node distances) can be passed as id pairs. */
+function graphWithPositions(positions: { id: string; x: number; y: number }[], edgePairs: [string, string][] = []): Graph {
   return {
     nodes: positions.map((p, i) => ({ id: p.id, isStart: i === 0, isGoal: i === positions.length - 1, x: p.x, y: p.y })),
-    edges: [],
+    edges: edgePairs.map(([source, target]) => ({ id: `${source}-${target}`, source, target })),
     startNodeId: positions[0].id,
     goalNodeId: positions[positions.length - 1].id,
-    adjacency: Object.fromEntries(positions.map((p) => [p.id, []])),
+    adjacency: Object.fromEntries(positions.map((p) => [p.id, edgePairs.filter((pair) => pair.includes(p.id)).map(([a, b]) => (a === p.id ? b : a))])),
   }
 }
 
@@ -51,16 +52,15 @@ describe('computeViewBounds', () => {
     expect(view.minX).toBeCloseTo(400, 0) // centered on focusX=500 within a 200-wide window
   })
 
-  it('clamps the window so it never drifts past the graph\'s actual extent', () => {
+  it('stays centered on the focus even at the graph\'s edge, showing space beyond it', () => {
     const positions = Array.from({ length: 30 }, (_, i) => ({ id: `n${i}`, x: Math.cos(i) * 300, y: Math.sin(i) * 300 }))
     const graph = graphWithPositions(positions)
     const full = computeGraphBounds(graph)
-    // Focus way outside the graph entirely — the window should still land fully inside full bounds.
-    const view = computeViewBounds(graph, full.minX - 10_000, full.minY - 10_000, 100)
-    expect(view.minX).toBeGreaterThanOrEqual(full.minX)
-    expect(view.minY).toBeGreaterThanOrEqual(full.minY)
-    expect(view.minX + view.width).toBeLessThanOrEqual(full.minX + full.width + 0.001)
-    expect(view.minY + view.height).toBeLessThanOrEqual(full.minY + full.height + 0.001)
+    // Focus right on the map's edge — the window keeps the focus centered instead of pinning
+    // inside the graph's bounds and letting the walker drift off-center.
+    const view = computeViewBounds(graph, full.minX, full.minY, 100)
+    expect(view.minX).toBeCloseTo(full.minX - view.width / 2, 5)
+    expect(view.minY).toBeCloseTo(full.minY - view.height / 2, 5)
   })
 })
 
@@ -92,13 +92,14 @@ describe('computeViewBounds with containerAspectRatio', () => {
     expect(view.width).toBeGreaterThan(full.width)
   })
 
-  it('keeps the grown axis clamped inside the graph\'s extent when windowed and there is room to shift instead of grow past it', () => {
+  it('keeps the window centered on the focus when the grown axis extends past the graph\'s edge', () => {
     const positions = Array.from({ length: 30 }, (_, i) => ({ id: `n${i}`, x: Math.cos(i) * 300, y: Math.sin(i) * 300 }))
     const graph = graphWithPositions(positions)
     const full = computeGraphBounds(graph)
-    const view = computeViewBounds(graph, 0, 0, 100, 2)
-    expect(view.minX).toBeGreaterThanOrEqual(full.minX - 0.001)
-    expect(view.minX + view.width).toBeLessThanOrEqual(full.minX + full.width + 0.001)
+    // Focus on the left edge with a wide container — the grown width overhangs the edge
+    // symmetrically instead of shifting the focus off-center to stay inside the graph.
+    const view = computeViewBounds(graph, full.minX, 0, 100, 2)
+    expect(view.minX + view.width / 2).toBeCloseTo(full.minX, 5)
   })
 
   it('is a no-op when the aspect ratio already matches', () => {
@@ -148,5 +149,81 @@ describe('computeDynamicViewSize', () => {
 
   it('never exceeds MAX_VIEW_SIZE, however far the nearest walkers are', () => {
     expect(computeDynamicViewSize({ x: 0, y: 0 }, [{ x: 1_000_000, y: 0 }])).toBe(MAX_VIEW_SIZE)
+  })
+
+  it('grows past even the scaled ceiling to keep the ~5 nearest stars in frame', () => {
+    // Four neighbors sitting far beyond MAX_VIEW_SIZE — a sparse warped region. The window must
+    // cover the farthest of them (Chebyshev half-span 3000 → size 3000 * 2 * margin), ceiling or not.
+    const graph = graphWithPositions([
+      { id: 'me', x: 0, y: 0 },
+      { id: 'a', x: 3000, y: 0 },
+      { id: 'b', x: -2800, y: 100 },
+      { id: 'c', x: 0, y: 2900 },
+      { id: 'd', x: 500, y: -2700 },
+    ])
+    const size = computeDynamicViewSize({ x: 0, y: 0 }, [], 1, graph)
+    expect(size).toBeGreaterThanOrEqual(3000 * 2)
+    // And in a dense region the floor stays inert — the ordinary clamps decide.
+    const dense = graphWithPositions([
+      { id: 'me', x: 0, y: 0 },
+      { id: 'a', x: 30, y: 0 },
+      { id: 'b', x: -28, y: 10 },
+      { id: 'c', x: 0, y: 29 },
+      { id: 'd', x: 5, y: -27 },
+    ])
+    expect(computeDynamicViewSize({ x: 0, y: 0 }, [], 1, dense)).toBe(MIN_VIEW_SIZE)
+  })
+
+  it('scales both clamps by the view scale on spread-out graphs', () => {
+    const scale = 10
+    // No others: the floor itself scales.
+    expect(computeDynamicViewSize({ x: 0, y: 0 }, [], scale)).toBe(MIN_VIEW_SIZE * scale)
+    // A walker past the unscaled floor but inside the scaled one still gets the scaled floor.
+    expect(computeDynamicViewSize({ x: 0, y: 0 }, [{ x: MIN_VIEW_SIZE, y: 0 }], scale)).toBe(MIN_VIEW_SIZE * scale)
+    // And the ceiling scales too.
+    expect(computeDynamicViewSize({ x: 0, y: 0 }, [{ x: 10_000_000, y: 0 }], scale)).toBe(MAX_VIEW_SIZE * scale)
+  })
+})
+
+describe('viewScale', () => {
+  it('is 1 for a graph at or below the reference spacing (and for edge-less graphs)', () => {
+    const atReference = graphWithPositions(
+      [
+        { id: 'a', x: 0, y: 0 },
+        { id: 'b', x: PRODUCTION_CONFIG.graph.spacingAtReferenceCount, y: 0 },
+      ],
+      [['a', 'b']],
+    )
+    expect(viewScale(atReference)).toBe(1)
+
+    const tight = graphWithPositions(
+      [
+        { id: 'a', x: 0, y: 0 },
+        { id: 'b', x: 40, y: 0 },
+      ],
+      [['a', 'b']],
+    )
+    expect(viewScale(tight)).toBe(1)
+
+    const edgeless = graphWithPositions([
+      { id: 'a', x: 0, y: 0 },
+      { id: 'b', x: 100_000, y: 0 },
+    ])
+    expect(viewScale(edgeless)).toBe(1)
+  })
+
+  it('grows in proportion to the shortest edge past the reference spacing', () => {
+    const graph = graphWithPositions(
+      [
+        { id: 'a', x: 0, y: 0 },
+        { id: 'b', x: PRODUCTION_CONFIG.graph.spacingAtReferenceCount * 10, y: 0 },
+        { id: 'c', x: PRODUCTION_CONFIG.graph.spacingAtReferenceCount * 40, y: 0 },
+      ],
+      [
+        ['a', 'b'],
+        ['b', 'c'],
+      ],
+    )
+    expect(viewScale(graph)).toBeCloseTo(10, 5)
   })
 })

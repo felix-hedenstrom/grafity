@@ -1,63 +1,58 @@
-import { useState } from 'react'
+import { Children, isValidElement, useState } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { ACHIEVEMENTS } from '../../game/achievements/definitions'
 import {
-  AMPLIFIER_PERCENT_PER_LEVEL,
   computeDiscoveryRewardPerNode,
   computeGoalRewardPerNode,
   computeInsightMultiplier,
   computeNodesPerSolve,
   computeRevisitReward,
-  EXPANSION_NODES_PER_LEVEL,
 } from '../../game/currency/rules'
 import {
-  BASE_DISTANCE_PER_SECOND,
+  computeAcceleration,
   computeDiscoverWaitMs,
-  computeDistancePerSecond,
   computeMomentumMultiplier,
-  computeUfoSpeedRatio,
-  QUICK_STEPS_PERCENT_PER_LEVEL,
-  UFO_SPEED_MAX_LEVEL,
+  velocityAtElapsedMs,
 } from '../../game/speed/rules'
+import type { WalkerTransit } from '../../store/useRunStore'
 import { getStrategy } from '../../game/strategies'
-import { computeEffectiveMemoryLevel, DEEP_MEMORY_PERCENT_PER_LEVEL } from '../../game/strategies/memory'
-import {
-  AMPLIFIER_UPGRADE_INFO,
-  CLARITY_UPGRADE,
-  DEEP_MEMORY_UPGRADE_INFO,
-  DEFAULT_STRATEGY_ID,
-  DISCOVER_WAIT_UPGRADE_INFO,
-  DISCOVERY_BONUS_UPGRADE_INFO,
-  EXIT_BONUS_UPGRADE_INFO,
-  EXPANSION_UPGRADE_INFO,
-  INSIGHT_MULTIPLIER_UPGRADE_INFO,
-  MAIN_WALKER_SPEED_UPGRADE_INFO,
-  MINIMAP_UPGRADE,
-  MOMENTUM_UPGRADE_INFO,
-  MUTEX_UPGRADE,
-  NODE_MEMORY_UPGRADE_INFO,
-  QUICK_STEPS_UPGRADE_INFO,
-  REVISIT_BONUS_UPGRADE_INFO,
-  SEARCHER_UPGRADE_INFO,
-  UFO_SPEED_UPGRADE_INFO,
-  UNLOCK_UFO_UPGRADE,
-  UPGRADES,
-} from '../../game/upgrades/definitions'
+import { PRODUCTION_CONFIG } from '../../game/config/production'
+import { computeEffectiveMemoryLevel } from '../../game/strategies/memory'
+import { DEFAULT_STRATEGY_ID, EXIT_AVOIDANCE, MOMENTUM, PULSAR_HUNTER, UPGRADE_INFOS, UPGRADES } from '../../game/upgrades/definitions'
+import { computeDarklyBotStepMs, isScannerArrayUnlocked } from '../../game/scannerWiring/rules'
+import { sortByUnlockLevel } from '../../game/upgrades/ordering'
 import { costForLevel, type RepeatableUpgradeInfo } from '../../game/upgrades/scaling'
 import { useNow } from '../../hooks/useNow'
 import { useAchievementStore } from '../../store/useAchievementStore'
+import { computeFtlMultiplier } from '../../game/prestige/rules'
+import { usePrestigeStore } from '../../store/usePrestigeStore'
 import { useProgressionStore } from '../../store/useProgressionStore'
 import { useRunStore } from '../../store/useRunStore'
+import { useScannerWiringStore } from '../../store/useScannerWiringStore'
 import styles from './Shop.module.css'
 
 /**
- * The single not-yet-owned algorithm to reveal next, in ascending cost order — only one locked
- * card is ever shown at a time, so the shop doesn't dump every algorithm on a new player at once.
- * Random Walk is always available and isn't part of this progression.
+ * The single not-yet-owned algorithm to reveal next, in ascending unlock-level order (cost breaks
+ * ties) — only one locked card is ever shown at a time, so the shop doesn't dump every algorithm
+ * on a new player at once. Random Walk is always available and isn't part of this progression.
  */
 function getNextLockedUpgradeId(purchasedUpgradeIds: string[]): string | undefined {
-  return [...UPGRADES]
-    .sort((a, b) => a.cost - b.cost)
-    .find((upgrade) => !purchasedUpgradeIds.includes(upgrade.id))?.id
+  return sortByUnlockLevel(
+    [...UPGRADES].sort((a, b) => a.cost - b.cost),
+    (upgrade) => upgrade.minLevel,
+  ).find((upgrade) => !purchasedUpgradeIds.includes(upgrade.id))?.id
+}
+
+/** A shop card's unlock requirement — RepeatableUpgradeCard carries it on info, UpgradeCard on minLevel; Random Walk (no requirement) counts as 0. */
+function cardUnlockLevel(card: ReactElement): number {
+  const props = card.props as { info?: RepeatableUpgradeInfo; minLevel?: number }
+  return props.info?.minLevel ?? props.minLevel ?? 0
+}
+
+/** Renders a tab's upgrade cards sorted by unlock requirement, ascending (see sortByUnlockLevel) — every tab's purchasable cards go through this, so the order holds whatever the config says and wherever a new card is added. */
+function UnlockOrdered({ children }: { children: ReactNode }) {
+  const cards = Children.toArray(children).filter(isValidElement)
+  return <>{sortByUnlockLevel(cards, cardUnlockLevel)}</>
 }
 
 /** Whether a repeatable's NEXT level is currently affordable and (for the very first level) level-unlocked. */
@@ -66,14 +61,14 @@ function canAffordRepeatable(info: RepeatableUpgradeInfo, level: number, currenc
   return currencyAmount >= costForLevel(info, level)
 }
 
-/** Whether a one-time upgrade (Clarity, Minimap) is currently affordable and level-unlocked, and not already owned. */
+/** Whether a one-time upgrade (Minimap) is currently affordable and level-unlocked, and not already owned. */
 function canAffordOneTime(upgrade: { cost: number; minLevel: number }, owned: boolean, currencyAmount: number, highestLevel: number): boolean {
   if (owned) return false
   if (highestLevel < upgrade.minLevel) return false
   return currencyAmount >= upgrade.cost
 }
 
-const TABS = ['Algorithms', 'Insight', 'Memory', 'Growth', 'Speed', 'Research', 'Achievements'] as const
+const TABS = ['Algorithms', 'Insight', 'Algorithm Improvements', 'Growth', 'Speed', 'Scanner', 'Achievements'] as const
 type Tab = (typeof TABS)[number]
 
 /** How many upgrades are currently purchasable in each tab — drives the "(N)" badge, omitted entirely when N is 0. */
@@ -85,68 +80,73 @@ function usePurchasableCounts(): Partial<Record<Tab, number>> {
   const deepMemoryLevel = useProgressionStore((s) => s.deepMemoryLevel)
   const expansionLevel = useProgressionStore((s) => s.expansionLevel)
   const amplifierLevel = useProgressionStore((s) => s.amplifierLevel)
-  const quickStepsLevel = useProgressionStore((s) => s.quickStepsLevel)
   const discoverWaitLevel = useProgressionStore((s) => s.discoverWaitLevel)
-  const momentumLevel = useProgressionStore((s) => s.momentumLevel)
+  const momentumOwned = useProgressionStore((s) => s.momentumOwned)
   const searcherLevel = useProgressionStore((s) => s.searcherLevel)
-  const mainWalkerSpeedLevel = useProgressionStore((s) => s.mainWalkerSpeedLevel)
-  const ufoSpeedLevel = useProgressionStore((s) => s.ufoSpeedLevel)
-  const clarityLevel = useProgressionStore((s) => s.clarityLevel)
+  const thrustersLevel = useProgressionStore((s) => s.thrustersLevel)
   const insightMultiplierLevel = useProgressionStore((s) => s.insightMultiplierLevel)
   const discoveryBonusLevel = useProgressionStore((s) => s.discoveryBonusLevel)
   const revisitBonusLevel = useProgressionStore((s) => s.revisitBonusLevel)
   const exitBonusLevel = useProgressionStore((s) => s.exitBonusLevel)
+  const unlockUfoOwned = usePrestigeStore((s) => s.unlockUfoOwned)
+  const darklyBotServosLevel = useProgressionStore((s) => s.darklyBotServosLevel)
+  const pulsarHunterOwned = useProgressionStore((s) => s.pulsarHunterOwned)
+  const exitAvoidanceOwned = useProgressionStore((s) => s.exitAvoidanceOwned)
 
   const amount = currency.amount
   const nextLockedUpgradeId = getNextLockedUpgradeId(purchasedUpgradeIds)
   const nextLockedUpgrade = UPGRADES.find((u) => u.id === nextLockedUpgradeId)
-  const unlockUfoOwned = purchasedUpgradeIds.includes(UNLOCK_UFO_UPGRADE.id)
 
   return {
     Algorithms: nextLockedUpgrade && canAffordOneTime(nextLockedUpgrade, false, amount, highestGraphNodeCount) ? 1 : 0,
     Insight:
-      Number(canAffordRepeatable(DISCOVERY_BONUS_UPGRADE_INFO, discoveryBonusLevel, amount, highestGraphNodeCount)) +
-      Number(canAffordRepeatable(REVISIT_BONUS_UPGRADE_INFO, revisitBonusLevel, amount, highestGraphNodeCount)) +
-      Number(canAffordRepeatable(EXIT_BONUS_UPGRADE_INFO, exitBonusLevel, amount, highestGraphNodeCount)) +
-      Number(canAffordRepeatable(INSIGHT_MULTIPLIER_UPGRADE_INFO, insightMultiplierLevel, amount, highestGraphNodeCount)),
-    Memory:
-      Number(canAffordRepeatable(NODE_MEMORY_UPGRADE_INFO, memoryLevel, amount, highestGraphNodeCount)) +
-      Number(canAffordRepeatable(DEEP_MEMORY_UPGRADE_INFO, deepMemoryLevel, amount, highestGraphNodeCount)),
+      Number(canAffordRepeatable(UPGRADE_INFOS.discoveryBonus, discoveryBonusLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(UPGRADE_INFOS.revisitBonus, revisitBonusLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(UPGRADE_INFOS.exitBonus, exitBonusLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(UPGRADE_INFOS.insightMultiplier, insightMultiplierLevel, amount, highestGraphNodeCount)),
+    'Algorithm Improvements':
+      Number(canAffordRepeatable(UPGRADE_INFOS.nodeMemory, memoryLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(UPGRADE_INFOS.deepMemory, deepMemoryLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordOneTime(PULSAR_HUNTER, pulsarHunterOwned, amount, highestGraphNodeCount)) +
+      Number(canAffordOneTime(EXIT_AVOIDANCE, exitAvoidanceOwned, amount, highestGraphNodeCount)),
     Growth:
-      Number(canAffordRepeatable(EXPANSION_UPGRADE_INFO, expansionLevel, amount, highestGraphNodeCount)) +
-      Number(canAffordRepeatable(AMPLIFIER_UPGRADE_INFO, amplifierLevel, amount, highestGraphNodeCount)),
+      Number(canAffordRepeatable(UPGRADE_INFOS.expansion, expansionLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(UPGRADE_INFOS.amplifier, amplifierLevel, amount, highestGraphNodeCount)),
     Speed:
-      Number(canAffordRepeatable(QUICK_STEPS_UPGRADE_INFO, quickStepsLevel, amount, highestGraphNodeCount)) +
-      Number(canAffordRepeatable(DISCOVER_WAIT_UPGRADE_INFO, discoverWaitLevel, amount, highestGraphNodeCount)) +
-      Number(canAffordRepeatable(MOMENTUM_UPGRADE_INFO, momentumLevel, amount, highestGraphNodeCount)) +
-      Number(unlockUfoOwned && canAffordRepeatable(SEARCHER_UPGRADE_INFO, searcherLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordRepeatable(UPGRADE_INFOS.discoverWait, discoverWaitLevel, amount, highestGraphNodeCount)) +
+      Number(canAffordOneTime(MOMENTUM, momentumOwned, amount, highestGraphNodeCount)) +
+      Number(unlockUfoOwned && canAffordRepeatable(UPGRADE_INFOS.searcher, searcherLevel, amount, highestGraphNodeCount)) +
       Number(
-        unlockUfoOwned &&
-          (mainWalkerSpeedLevel > 0 || searcherLevel > 0) &&
-          canAffordRepeatable(MAIN_WALKER_SPEED_UPGRADE_INFO, mainWalkerSpeedLevel, amount, highestGraphNodeCount),
-      ) +
-      Number(
-        unlockUfoOwned &&
-          ufoSpeedLevel < UFO_SPEED_MAX_LEVEL &&
-          canAffordRepeatable(UFO_SPEED_UPGRADE_INFO, ufoSpeedLevel, amount, highestGraphNodeCount),
+        thrustersLevel < UPGRADE_INFOS.thrusters.maxLevel! && canAffordRepeatable(UPGRADE_INFOS.thrusters, thrustersLevel, amount, highestGraphNodeCount),
       ),
-    Research:
-      Number(canAffordOneTime(CLARITY_UPGRADE, clarityLevel > 0, amount, highestGraphNodeCount)) +
-      Number(canAffordOneTime(MINIMAP_UPGRADE, purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id), amount, highestGraphNodeCount)) +
-      Number(canAffordOneTime(UNLOCK_UFO_UPGRADE, unlockUfoOwned, amount, highestGraphNodeCount)) +
-      Number(canAffordOneTime(MUTEX_UPGRADE, purchasedUpgradeIds.includes(MUTEX_UPGRADE.id), amount, highestGraphNodeCount)),
+    Scanner:
+      Number(
+        darklyBotServosLevel < UPGRADE_INFOS.darklyBotServos.maxLevel! &&
+          canAffordRepeatable(UPGRADE_INFOS.darklyBotServos, darklyBotServosLevel, amount, highestGraphNodeCount),
+      ),
   }
 }
 
+/** The Scanner tab (Darkly-bot Servos) stays hidden until the Scanner Array itself is unlocked — see isScannerArrayUnlocked. */
+function useScannerUnlocked(): boolean {
+  const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
+  const sensorCount = useScannerWiringStore((s) => s.sensors.length)
+  return isScannerArrayUnlocked(highestGraphNodeCount, sensorCount)
+}
+
 export function Shop() {
-  const [activeTab, setActiveTab] = useState<Tab>('Algorithms')
+  const [selectedTab, setSelectedTab] = useState<Tab>('Algorithms')
   const unlockedCount = useAchievementStore((s) => s.unlockedIds.length)
   const purchasableCounts = usePurchasableCounts()
+  const scannerUnlocked = useScannerUnlocked()
+  const visibleTabs = TABS.filter((tab) => tab !== 'Scanner' || scannerUnlocked)
+  // A prestige can re-lock the Scanner tab while it's selected — fall back rather than show a hidden tab.
+  const activeTab = visibleTabs.includes(selectedTab) ? selectedTab : 'Algorithms'
 
   return (
     <div className={styles.panel}>
       <div className={styles.tabBar}>
-        {TABS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const purchasableCount = purchasableCounts[tab] ?? 0
           const label =
             tab === 'Achievements' ? `${tab} (${unlockedCount}/${ACHIEVEMENTS.length})` : purchasableCount > 0 ? `${tab} (${purchasableCount})` : tab
@@ -155,7 +155,7 @@ export function Shop() {
               key={tab}
               type="button"
               className={[styles.tabButton, tab === activeTab ? styles.tabButtonActive : ''].filter(Boolean).join(' ')}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => setSelectedTab(tab)}
             >
               {label}
             </button>
@@ -165,10 +165,10 @@ export function Shop() {
       <div className={styles.tabContent}>
         {activeTab === 'Algorithms' && <AlgorithmsTab />}
         {activeTab === 'Insight' && <InsightTab />}
-        {activeTab === 'Memory' && <MemoryTab />}
+        {activeTab === 'Algorithm Improvements' && <AlgorithmImprovementsTab />}
         {activeTab === 'Growth' && <GrowthTab />}
         {activeTab === 'Speed' && <SpeedTab />}
-        {activeTab === 'Research' && <ResearchTab />}
+        {activeTab === 'Scanner' && <ScannerTab />}
         {activeTab === 'Achievements' && <AchievementsTab />}
       </div>
     </div>
@@ -187,34 +187,36 @@ function AlgorithmsTab() {
 
   return (
     <div className={styles.shop}>
-      <UpgradeCard
-        name="Random Walk"
-        description="Picks a random edge every step. No pattern, no memory — the baseline every other upgrade improves on."
-        isActive={activeStrategyId === DEFAULT_STRATEGY_ID}
-        onUse={() => setActiveStrategy(DEFAULT_STRATEGY_ID)}
-      />
-      {UPGRADES.filter((upgrade) => purchasedUpgradeIds.includes(upgrade.id) || upgrade.id === nextLockedUpgradeId).map(
-        (upgrade) => {
-          const owned = purchasedUpgradeIds.includes(upgrade.id)
-          const isActive = activeStrategyId === upgrade.strategyId
-          const affordable = currency.amount >= upgrade.cost
-
-          return (
-            <UpgradeCard
-              key={upgrade.id}
-              name={upgrade.name}
-              description={upgrade.description}
-              isActive={isActive}
-              onUse={owned ? () => setActiveStrategy(upgrade.strategyId as string) : undefined}
-              cost={owned ? undefined : upgrade.cost}
-              canAfford={affordable}
-              onBuy={owned ? undefined : () => purchaseUpgrade(upgrade.id)}
-              minLevel={upgrade.minLevel}
-              highestLevel={highestGraphNodeCount}
-            />
-          )
-        },
-      )}
+      <UnlockOrdered>
+        <UpgradeCard
+          name="Random Walk"
+          description="Picks a random edge every step. No pattern, no memory — the baseline every other upgrade improves on."
+          isActive={activeStrategyId === DEFAULT_STRATEGY_ID}
+          onUse={() => setActiveStrategy(DEFAULT_STRATEGY_ID)}
+        />
+        {UPGRADES.filter((upgrade) => purchasedUpgradeIds.includes(upgrade.id) || upgrade.id === nextLockedUpgradeId).map(
+          (upgrade) => {
+            const owned = purchasedUpgradeIds.includes(upgrade.id)
+            const isActive = activeStrategyId === upgrade.strategyId
+            const affordable = currency.amount >= upgrade.cost
+  
+            return (
+              <UpgradeCard
+                key={upgrade.id}
+                name={upgrade.name}
+                description={upgrade.description}
+                isActive={isActive}
+                onUse={owned ? () => setActiveStrategy(upgrade.strategyId as string) : undefined}
+                cost={owned ? undefined : upgrade.cost}
+                canAfford={affordable}
+                onBuy={owned ? undefined : () => purchaseUpgrade(upgrade.id)}
+                minLevel={upgrade.minLevel}
+                highestLevel={highestGraphNodeCount}
+              />
+            )
+          },
+        )}
+      </UnlockOrdered>
     </div>
   )
 }
@@ -247,39 +249,41 @@ function InsightTab() {
           { label: 'Overall multiplier', value: `×${multiplier.toFixed(2)}`, isTotal: true },
         ]}
       />
-      <RepeatableUpgradeCard
-        info={DISCOVERY_BONUS_UPGRADE_INFO}
-        level={discoveryBonusLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseDiscoveryBonusLevel}
-      />
-      <RepeatableUpgradeCard
-        info={REVISIT_BONUS_UPGRADE_INFO}
-        level={revisitBonusLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseRevisitBonusLevel}
-      />
-      <RepeatableUpgradeCard
-        info={EXIT_BONUS_UPGRADE_INFO}
-        level={exitBonusLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseExitBonusLevel}
-      />
-      <RepeatableUpgradeCard
-        info={INSIGHT_MULTIPLIER_UPGRADE_INFO}
-        level={insightMultiplierLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseInsightMultiplierLevel}
-      />
+      <UnlockOrdered>
+        <RepeatableUpgradeCard
+          info={UPGRADE_INFOS.discoveryBonus}
+          level={discoveryBonusLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseDiscoveryBonusLevel}
+        />
+        <RepeatableUpgradeCard
+          info={UPGRADE_INFOS.revisitBonus}
+          level={revisitBonusLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseRevisitBonusLevel}
+        />
+        <RepeatableUpgradeCard
+          info={UPGRADE_INFOS.exitBonus}
+          level={exitBonusLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseExitBonusLevel}
+        />
+        <RepeatableUpgradeCard
+          info={UPGRADE_INFOS.insightMultiplier}
+          level={insightMultiplierLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseInsightMultiplierLevel}
+        />
+      </UnlockOrdered>
     </div>
   )
 }
 
-function MemoryTab() {
+function AlgorithmImprovementsTab() {
   const currency = useProgressionStore((s) => s.currency)
   const memoryLevel = useProgressionStore((s) => s.memoryLevel)
   const deepMemoryLevel = useProgressionStore((s) => s.deepMemoryLevel)
@@ -287,9 +291,17 @@ function MemoryTab() {
   const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
   const purchaseMemoryLevel = useProgressionStore((s) => s.purchaseMemoryLevel)
   const purchaseDeepMemoryLevel = useProgressionStore((s) => s.purchaseDeepMemoryLevel)
+  const pulsarHunterOwned = useProgressionStore((s) => s.pulsarHunterOwned)
+  const pulsarHunterEnabled = useProgressionStore((s) => s.pulsarHunterEnabled)
+  const purchasePulsarHunter = useProgressionStore((s) => s.purchasePulsarHunter)
+  const togglePulsarHunter = useProgressionStore((s) => s.togglePulsarHunter)
+  const exitAvoidanceOwned = useProgressionStore((s) => s.exitAvoidanceOwned)
+  const exitAvoidanceEnabled = useProgressionStore((s) => s.exitAvoidanceEnabled)
+  const purchaseExitAvoidance = useProgressionStore((s) => s.purchaseExitAvoidance)
+  const toggleExitAvoidance = useProgressionStore((s) => s.toggleExitAvoidance)
 
   const strategy = getStrategy(activeStrategyId)
-  const deepMultiplier = (1 + DEEP_MEMORY_PERCENT_PER_LEVEL) ** deepMemoryLevel
+  const deepMultiplier = (1 + PRODUCTION_CONFIG.upgrades.deepMemory.percentPerLevel) ** deepMemoryLevel
   const effectiveMemoryLevel = computeEffectiveMemoryLevel(memoryLevel, deepMemoryLevel, strategy.memoryMultiplier)
 
   return (
@@ -303,20 +315,46 @@ function MemoryTab() {
           { label: 'Steps remembered', value: `${effectiveMemoryLevel}`, isTotal: true },
         ]}
       />
-      <RepeatableUpgradeCard
-        info={NODE_MEMORY_UPGRADE_INFO}
-        level={memoryLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseMemoryLevel}
-      />
-      <RepeatableUpgradeCard
-        info={DEEP_MEMORY_UPGRADE_INFO}
-        level={deepMemoryLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseDeepMemoryLevel}
-      />
+      <UnlockOrdered>
+        <RepeatableUpgradeCard
+          info={UPGRADE_INFOS.nodeMemory}
+          level={memoryLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseMemoryLevel}
+        />
+        <RepeatableUpgradeCard
+          info={UPGRADE_INFOS.deepMemory}
+          level={deepMemoryLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseDeepMemoryLevel}
+        />
+        <UpgradeCard
+          name={PULSAR_HUNTER.name}
+          description={PULSAR_HUNTER.description}
+          isActive={pulsarHunterOwned && pulsarHunterEnabled}
+          cost={pulsarHunterOwned ? undefined : PULSAR_HUNTER.cost}
+          canAfford={currency.amount >= PULSAR_HUNTER.cost}
+          onBuy={pulsarHunterOwned ? undefined : purchasePulsarHunter}
+          onUse={togglePulsarHunter}
+          isToggle
+          minLevel={PULSAR_HUNTER.minLevel}
+          highestLevel={highestGraphNodeCount}
+        />
+        <UpgradeCard
+          name={EXIT_AVOIDANCE.name}
+          description={EXIT_AVOIDANCE.description}
+          isActive={exitAvoidanceOwned && exitAvoidanceEnabled}
+          cost={exitAvoidanceOwned ? undefined : EXIT_AVOIDANCE.cost}
+          canAfford={currency.amount >= EXIT_AVOIDANCE.cost}
+          onBuy={exitAvoidanceOwned ? undefined : purchaseExitAvoidance}
+          onUse={toggleExitAvoidance}
+          isToggle
+          minLevel={EXIT_AVOIDANCE.minLevel}
+          highestLevel={highestGraphNodeCount}
+        />
+      </UnlockOrdered>
     </div>
   )
 }
@@ -329,7 +367,7 @@ function GrowthTab() {
   const purchaseExpansionLevel = useProgressionStore((s) => s.purchaseExpansionLevel)
   const purchaseAmplifierLevel = useProgressionStore((s) => s.purchaseAmplifierLevel)
 
-  const amplifierMultiplier = (1 + AMPLIFIER_PERCENT_PER_LEVEL) ** amplifierLevel
+  const amplifierMultiplier = (1 + PRODUCTION_CONFIG.upgrades.amplifier.percentPerLevel) ** amplifierLevel
   const nodesPerSolve = computeNodesPerSolve(expansionLevel, amplifierLevel)
 
   return (
@@ -338,190 +376,139 @@ function GrowthTab() {
         title="How growth works"
         lines={[
           { label: 'Base, per solve', value: '+1 node' },
-          { label: 'Expansion bonus', value: `+${expansionLevel * EXPANSION_NODES_PER_LEVEL} nodes` },
+          { label: 'Expansion bonus', value: `+${expansionLevel * PRODUCTION_CONFIG.upgrades.expansion.nodesPerLevel} nodes` },
           { label: 'Amplifier bonus', value: `×${amplifierMultiplier.toFixed(2)}` },
           { label: 'Nodes per solve', value: `${nodesPerSolve}`, isTotal: true },
         ]}
       />
-      <RepeatableUpgradeCard
-        info={EXPANSION_UPGRADE_INFO}
-        level={expansionLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseExpansionLevel}
-      />
-      <RepeatableUpgradeCard
-        info={AMPLIFIER_UPGRADE_INFO}
-        level={amplifierLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseAmplifierLevel}
-      />
+      <UnlockOrdered>
+        <RepeatableUpgradeCard
+          info={UPGRADE_INFOS.expansion}
+          level={expansionLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseExpansionLevel}
+        />
+        <RepeatableUpgradeCard
+          info={UPGRADE_INFOS.amplifier}
+          level={amplifierLevel}
+          currencyAmount={currency.amount}
+          highestLevel={highestGraphNodeCount}
+          onBuy={purchaseAmplifierLevel}
+        />
+      </UnlockOrdered>
     </div>
   )
 }
 
+/** The instantaneous speed right now — walking the actual accel/cruise/decel profile of the given transit if one is active, or the walker's resting speed (0 unless mid-pass-through) otherwise. */
+function liveSpeed(transit: WalkerTransit | null, atRestSpeed: number, now: number, acceleration: number): number {
+  if (!transit) return atRestSpeed
+  return velocityAtElapsedMs(transit, now - transit.startedAt, acceleration)
+}
+
 function SpeedTab() {
   const currency = useProgressionStore((s) => s.currency)
-  const quickStepsLevel = useProgressionStore((s) => s.quickStepsLevel)
   const discoverWaitLevel = useProgressionStore((s) => s.discoverWaitLevel)
-  const momentumLevel = useProgressionStore((s) => s.momentumLevel)
+  const momentumOwned = useProgressionStore((s) => s.momentumOwned)
   const searcherLevel = useProgressionStore((s) => s.searcherLevel)
-  const mainWalkerSpeedLevel = useProgressionStore((s) => s.mainWalkerSpeedLevel)
-  const ufoSpeedLevel = useProgressionStore((s) => s.ufoSpeedLevel)
+  const thrustersLevel = useProgressionStore((s) => s.thrustersLevel)
   const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
-  const unlockUfoOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(UNLOCK_UFO_UPGRADE.id))
-  const purchaseQuickStepsLevel = useProgressionStore((s) => s.purchaseQuickStepsLevel)
+  const unlockUfoOwned = usePrestigeStore((s) => s.unlockUfoOwned)
+  const ftlLevel = usePrestigeStore((s) => s.ftlLevel)
   const purchaseDiscoverWaitLevel = useProgressionStore((s) => s.purchaseDiscoverWaitLevel)
-  const purchaseMomentumLevel = useProgressionStore((s) => s.purchaseMomentumLevel)
+  const purchaseMomentum = useProgressionStore((s) => s.purchaseMomentum)
   const purchaseSearcherLevel = useProgressionStore((s) => s.purchaseSearcherLevel)
-  const purchaseMainWalkerSpeedLevel = useProgressionStore((s) => s.purchaseMainWalkerSpeedLevel)
-  const purchaseUfoSpeedLevel = useProgressionStore((s) => s.purchaseUfoSpeedLevel)
+  const purchaseThrustersLevel = useProgressionStore((s) => s.purchaseThrustersLevel)
   const runStartedAt = useRunStore((s) => s.runStartedAt)
+  const walkers = useRunStore((s) => s.walkers)
+  const walkerTransits = useRunStore((s) => s.walkerTransits)
+  const walkerSpeeds = useRunStore((s) => s.walkerSpeeds)
 
   const now = useNow()
   const elapsedSecondsThisRun = (now - runStartedAt) / 1000
-  const quickStepsMultiplier = (1 + QUICK_STEPS_PERCENT_PER_LEVEL) ** quickStepsLevel
-  const momentumMultiplier = computeMomentumMultiplier(momentumLevel, elapsedSecondsThisRun)
-  const ufoSpeedRatio = computeUfoSpeedRatio(ufoSpeedLevel)
-  const mainWalkerDistancePerSecond = computeDistancePerSecond({ quickStepsLevel, momentumLevel, elapsedSecondsThisRun, mainWalkerSpeedLevel }, true)
-  const ufoDistancePerSecond = computeDistancePerSecond(
-    { quickStepsLevel, momentumLevel, elapsedSecondsThisRun, mainWalkerSpeedLevel, ufoSpeedLevel },
-    false,
-  )
+  const momentumMultiplier = computeMomentumMultiplier(momentumOwned, elapsedSecondsThisRun)
+  const speedOfLight = PRODUCTION_CONFIG.speed.baseSpeedOfLight * computeFtlMultiplier(ftlLevel)
   const discoverWaitMs = computeDiscoverWaitMs(discoverWaitLevel)
+  const acceleration = computeAcceleration(thrustersLevel, momentumOwned, elapsedSecondsThisRun)
+
+  // A UFO is any walker past walkers[0] — Reverse Beacon UFOs included, they're ordinary pool entries.
+  const ufoTransit = walkers.length > 1 ? (walkerTransits[1] ?? null) : null
+  const ufoAtRestSpeed = walkers.length > 1 ? (walkerSpeeds[1] ?? 0) : 0
+  const mainSpeedLive = liveSpeed(walkerTransits[0] ?? null, walkerSpeeds[0] ?? 0, now, acceleration)
+  const ufoSpeedLive = liveSpeed(ufoTransit, ufoAtRestSpeed, now, acceleration)
+  const hasUfo = walkers.length > 1
 
   return (
     <div className={styles.shop}>
       <StatCard
         title="How speed is calculated"
         lines={[
-          { label: 'Base speed', value: `${BASE_DISTANCE_PER_SECOND.toFixed(1)} distance/sec` },
-          { label: 'Quick Steps', value: `×${quickStepsMultiplier.toFixed(2)}` },
           { label: 'Momentum (this run)', value: `×${momentumMultiplier.toFixed(2)}` },
-          { label: 'UFO speed ratio', value: `${Math.round(ufoSpeedRatio * 100)}% of Spaceship speed` },
-          { label: 'Current speed (Spaceship)', value: `${mainWalkerDistancePerSecond.toFixed(1)} distance/sec`, isTotal: true },
-          { label: 'Current speed (UFOs)', value: `${ufoDistancePerSecond.toFixed(1)} distance/sec`, isTotal: true },
+          { label: 'Acceleration', value: `${acceleration.toFixed(1)} distance/sec²`, isTotal: true },
+          { label: 'Speed (Spaceship)', value: `${mainSpeedLive.toFixed(1)} distance/sec`, isTotal: true },
+          ...(unlockUfoOwned && hasUfo ? [{ label: 'Speed (UFOs)', value: `${ufoSpeedLive.toFixed(1)} distance/sec`, isTotal: true }] : []),
+          { label: 'Top speed (speed of light)', value: `${speedOfLight.toFixed(1)} distance/sec`, isTotal: true },
           { label: 'Discover wait', value: `${Math.round(discoverWaitMs)}ms`, isTotal: true },
         ]}
       />
-      <RepeatableUpgradeCard
-        info={MOMENTUM_UPGRADE_INFO}
-        level={momentumLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseMomentumLevel}
-      />
-      <RepeatableUpgradeCard
-        info={QUICK_STEPS_UPGRADE_INFO}
-        level={quickStepsLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseQuickStepsLevel}
-      />
-      <RepeatableUpgradeCard
-        info={DISCOVER_WAIT_UPGRADE_INFO}
-        level={discoverWaitLevel}
-        currencyAmount={currency.amount}
-        highestLevel={highestGraphNodeCount}
-        onBuy={purchaseDiscoverWaitLevel}
-      />
-      {unlockUfoOwned && (
+      <UnlockOrdered>
         <RepeatableUpgradeCard
-          info={SEARCHER_UPGRADE_INFO}
-          level={searcherLevel}
+          info={UPGRADE_INFOS.thrusters}
+          level={thrustersLevel}
           currencyAmount={currency.amount}
           highestLevel={highestGraphNodeCount}
-          onBuy={purchaseSearcherLevel}
+          onBuy={purchaseThrustersLevel}
         />
-      )}
-      {unlockUfoOwned && (
+        <UpgradeCard
+          name={MOMENTUM.name}
+          description={MOMENTUM.description}
+          isActive={momentumOwned}
+          cost={momentumOwned ? undefined : MOMENTUM.cost}
+          canAfford={currency.amount >= MOMENTUM.cost}
+          onBuy={momentumOwned ? undefined : purchaseMomentum}
+          minLevel={MOMENTUM.minLevel}
+          highestLevel={highestGraphNodeCount}
+        />
         <RepeatableUpgradeCard
-          info={MAIN_WALKER_SPEED_UPGRADE_INFO}
-          level={mainWalkerSpeedLevel}
+          info={UPGRADE_INFOS.discoverWait}
+          level={discoverWaitLevel}
           currencyAmount={currency.amount}
           highestLevel={highestGraphNodeCount}
-          onBuy={purchaseMainWalkerSpeedLevel}
-          extraLock={{ locked: searcherLevel === 0, message: 'Requires Extra Searcher' }}
+          onBuy={purchaseDiscoverWaitLevel}
         />
-      )}
-      {unlockUfoOwned && (
-        <RepeatableUpgradeCard
-          info={UFO_SPEED_UPGRADE_INFO}
-          level={ufoSpeedLevel}
-          currencyAmount={currency.amount}
-          highestLevel={highestGraphNodeCount}
-          onBuy={purchaseUfoSpeedLevel}
-        />
-      )}
+        {unlockUfoOwned && (
+          <RepeatableUpgradeCard
+            info={UPGRADE_INFOS.searcher}
+            level={searcherLevel}
+            currencyAmount={currency.amount}
+            highestLevel={highestGraphNodeCount}
+            onBuy={purchaseSearcherLevel}
+          />
+        )}
+      </UnlockOrdered>
     </div>
   )
 }
 
-function ResearchTab() {
+function ScannerTab() {
   const currency = useProgressionStore((s) => s.currency)
-  const clarityLevel = useProgressionStore((s) => s.clarityLevel)
   const highestGraphNodeCount = useProgressionStore((s) => s.highestGraphNodeCount)
-  const purchaseClarity = useProgressionStore((s) => s.purchaseClarity)
-  const minimapOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(MINIMAP_UPGRADE.id))
-  const minimapEnabled = useProgressionStore((s) => s.minimapEnabled)
-  const purchaseMinimap = useProgressionStore((s) => s.purchaseMinimap)
-  const toggleMinimap = useProgressionStore((s) => s.toggleMinimap)
-  const unlockUfoOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(UNLOCK_UFO_UPGRADE.id))
-  const purchaseUnlockUfo = useProgressionStore((s) => s.purchaseUnlockUfo)
-  const mutexOwned = useProgressionStore((s) => s.purchasedUpgradeIds.includes(MUTEX_UPGRADE.id))
-  const mutexEnabled = useProgressionStore((s) => s.mutexEnabled)
-  const purchaseMutex = useProgressionStore((s) => s.purchaseMutex)
-  const toggleMutex = useProgressionStore((s) => s.toggleMutex)
-  const clarityOwned = clarityLevel > 0
+  const darklyBotServosLevel = useProgressionStore((s) => s.darklyBotServosLevel)
+  const purchaseDarklyBotServosLevel = useProgressionStore((s) => s.purchaseDarklyBotServosLevel)
 
   return (
     <div className={styles.shop}>
-      <UpgradeCard
-        name={CLARITY_UPGRADE.name}
-        description={CLARITY_UPGRADE.description}
-        isActive={clarityOwned}
-        onUse={undefined}
-        cost={clarityOwned ? undefined : CLARITY_UPGRADE.cost}
-        canAfford={currency.amount >= CLARITY_UPGRADE.cost}
-        onBuy={clarityOwned ? undefined : purchaseClarity}
-        minLevel={CLARITY_UPGRADE.minLevel}
-        highestLevel={highestGraphNodeCount}
+      <StatCard
+        title="Darkly-bot"
+        lines={[{ label: 'Time between moves', value: `${(computeDarklyBotStepMs(darklyBotServosLevel) / 1000).toFixed(1)}s`, isTotal: true }]}
       />
-      <UpgradeCard
-        name={MINIMAP_UPGRADE.name}
-        description={MINIMAP_UPGRADE.description}
-        isActive={minimapEnabled}
-        onUse={minimapOwned ? toggleMinimap : undefined}
-        cost={minimapOwned ? undefined : MINIMAP_UPGRADE.cost}
-        canAfford={currency.amount >= MINIMAP_UPGRADE.cost}
-        onBuy={minimapOwned ? undefined : purchaseMinimap}
-        minLevel={MINIMAP_UPGRADE.minLevel}
+      <RepeatableUpgradeCard
+        info={UPGRADE_INFOS.darklyBotServos}
+        level={darklyBotServosLevel}
+        currencyAmount={currency.amount}
         highestLevel={highestGraphNodeCount}
-        isToggle
-      />
-      <UpgradeCard
-        name={UNLOCK_UFO_UPGRADE.name}
-        description={UNLOCK_UFO_UPGRADE.description}
-        isActive={unlockUfoOwned}
-        onUse={undefined}
-        cost={unlockUfoOwned ? undefined : UNLOCK_UFO_UPGRADE.cost}
-        canAfford={currency.amount >= UNLOCK_UFO_UPGRADE.cost}
-        onBuy={unlockUfoOwned ? undefined : purchaseUnlockUfo}
-        minLevel={UNLOCK_UFO_UPGRADE.minLevel}
-        highestLevel={highestGraphNodeCount}
-      />
-      <UpgradeCard
-        name={MUTEX_UPGRADE.name}
-        description={MUTEX_UPGRADE.description}
-        isActive={mutexEnabled}
-        onUse={mutexOwned ? toggleMutex : undefined}
-        cost={mutexOwned ? undefined : MUTEX_UPGRADE.cost}
-        canAfford={currency.amount >= MUTEX_UPGRADE.cost}
-        onBuy={mutexOwned ? undefined : purchaseMutex}
-        minLevel={MUTEX_UPGRADE.minLevel}
-        highestLevel={highestGraphNodeCount}
-        isToggle
+        onBuy={purchaseDarklyBotServosLevel}
       />
     </div>
   )

@@ -1,21 +1,16 @@
+import type { GameConfig } from '../config/types'
+import { PRODUCTION_CONFIG } from '../config/production'
 import type { NodeId } from '../graph/types'
 import type { StrategyContext } from './types'
-
-export const NODE_MEMORY_BASE_COST = 100
-export const NODE_MEMORY_COST_GROWTH = 1.15
-
-/** Deep Memory is repeatable and expensive — each purchase multiplies the effective Node Memory level by another 20%, compounding, uncapped. */
-export const DEEP_MEMORY_PERCENT_PER_LEVEL = 0.2
-export const DEEP_MEMORY_BASE_COST = 2000
-export const DEEP_MEMORY_COST_GROWTH = 1.3
 
 /**
  * How many nodes Node Memory actually covers once Deep Memory's compounding multiplier AND the
  * active strategy's own memoryMultiplier are applied — this is what ends up in
- * StrategyContext.memoryLevel, not the raw owned level.
+ * StrategyContext.memoryLevel, not the raw owned level. Deep Memory is repeatable and expensive —
+ * each purchase multiplies the effective level by another percentPerLevel, compounding, uncapped.
  */
-export function computeEffectiveMemoryLevel(memoryLevel: number, deepMemoryLevel: number, strategyMultiplier: number): number {
-  const deepMultiplier = (1 + DEEP_MEMORY_PERCENT_PER_LEVEL) ** deepMemoryLevel
+export function computeEffectiveMemoryLevel(memoryLevel: number, deepMemoryLevel: number, strategyMultiplier: number, config: GameConfig = PRODUCTION_CONFIG): number {
+  const deepMultiplier = (1 + config.upgrades.deepMemory.percentPerLevel) ** deepMemoryLevel
   return Math.round(memoryLevel * deepMultiplier * strategyMultiplier)
 }
 
@@ -115,15 +110,48 @@ export function filterByMemory(candidates: NodeId[], ctx: StrategyContext): Node
   const available = ctx.excludedNodeIds ? candidates.filter((id) => !ctx.excludedNodeIds!.has(id)) : candidates
   if (available.length === 0) return available
 
-  const remembered = rememberedNodes(ctx.walker.path, ctx.memoryLevel)
+  // Floored at 1 regardless of owned Node Memory level: "never immediately backtrack onto the
+  // node I just came from" is a free baseline, not something that requires a purchase — paid
+  // levels only extend how much further back than that is also avoided. The dead-end fallback
+  // below (bestForcedCandidate over `available`) still lets a true dead end retreat correctly.
+  const remembered = rememberedNodes(ctx.walker.path, Math.max(1, ctx.memoryLevel))
   const novel = available.filter((id) => !remembered.has(id))
   if (novel.length > 0) return novel
   return [bestForcedCandidate(available, ctx)]
 }
 
-/** Truncates a DFS-style stack to the last memoryLevel entries, in place — the walker can't backtrack past what it still remembers. */
+/**
+ * Floor on the pathfinding planning horizon — even with zero Node Memory purchased, a planner can
+ * still route back through this many of its most recent steps, so low-memory BFS degrades into a
+ * local frontier-seeker instead of breaking outright.
+ */
+export const PLANNING_HORIZON_FLOOR = 8
+
+/**
+ * Which nodes a pathfinding strategy (BFS, Dijkstra, A*, Compass, Swarm) may plan routes THROUGH:
+ * discovered, not mutex-claimed, and — if already visited — within the remembered window (the last
+ * max(floor, memoryLevel) entries of the pooled path, current node included). Discovered-but-
+ * unvisited nodes are always plannable: the walker can see them, it just can't remember its way
+ * back through visited corridors it's forgotten. This is what makes Node Memory matter to the
+ * planners at the top of the algorithm ladder, not just the wandering strategies.
+ *
+ * A route that no longer exists through remembered territory makes nextHopToward return null,
+ * which every planner already answers with its random-neighbor fallback — never a dead stop.
+ */
+export function plannableFn(ctx: StrategyContext): (id: NodeId) => boolean {
+  const horizon = Math.max(PLANNING_HORIZON_FLOOR, ctx.memoryLevel)
+  // +1 so the walker's current node is always inside its own window.
+  const remembered = new Set(ctx.walker.path.slice(-(horizon + 1)))
+  return (id) =>
+    ctx.discovery.discoveredNodeIds.has(id) &&
+    !ctx.excludedNodeIds?.has(id) &&
+    (!ctx.discovery.visitedNodeIds.has(id) || remembered.has(id))
+}
+
+/** Truncates a DFS-style stack to the last memoryLevel entries, in place — the walker can't backtrack past what it still remembers. Floored at 1, same as filterByMemory, so DFS can always backtrack to its immediate parent even with zero Node Memory levels owned. */
 export function capMemoryStack(stack: NodeId[], memoryLevel: number): void {
-  if (stack.length > memoryLevel) {
-    stack.splice(0, stack.length - memoryLevel)
+  const cap = Math.max(1, memoryLevel)
+  if (stack.length > cap) {
+    stack.splice(0, stack.length - cap)
   }
 }

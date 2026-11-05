@@ -1,4 +1,6 @@
 import { Delaunay } from 'd3-delaunay'
+import type { GameConfig } from '../config/types'
+import { PRODUCTION_CONFIG } from '../config/production'
 import type { Rng } from '../../utils/rng'
 import { randomInt } from '../../utils/rng'
 import type { Point } from './poissonDisk'
@@ -6,41 +8,22 @@ import { samplePoissonDisk } from './poissonDisk'
 import type { Graph, GraphEdge, GraphNode, NodeId } from './types'
 import { edgeId } from './types'
 
-/** Fraction of the non-tree Delaunay edges added back on top of the spanning tree, so there's more than one path between nodes. */
-const EXTRA_EDGE_RATIO = 0.4
+// All generation tunables (edge ratio, warp, spacing curve, packing) live in GameConfig's graph
+// group — see config/types.ts for what each knob does and PRODUCTION_CONFIG for the shipped
+// values, including the spacing/acceleration coupling that used to be documented here.
+// config.graph.spacingAtReferenceCount is also the camera/star-sizing reference: layout.ts's
+// viewScale treats a graph whose shortest edge equals it as 1x zoom, so view windows and star
+// radii scale with it automatically.
 
-/** How many random "attractor" points pull/push sampled points during the density warp — see warpPoints. */
-const WARP_ATTRACTOR_COUNT = 5
-/** How strongly each attractor pulls (positive) or pushes (negative) nearby points, as a fraction of the canvas size — tunable for feel; higher spreads edge length further apart. Raised from the old 0.5 now that edge weight is real distance (no reshapeWeights step widening the spread afterward), so strategies that care about cost still see meaningfully different routes. */
-const WARP_STRENGTH = 1.4
-/** Falloff radius for an attractor's pull/push, as a fraction of canvas width — points much farther than this from an attractor are barely affected by it. Widened alongside WARP_STRENGTH so denser/sparser regions span more of the canvas, not just small pockets around each attractor. */
-const WARP_FALLOFF_RATIO = 0.4
-
-/** Clarity is a one-time, on/off unlock — buying it spreads nodes this much farther apart at generation time. */
-export const CLARITY_SPACING_MULTIPLIER = 1.6
-export const CLARITY_COST = 1500
-export const CLARITY_MAX_LEVEL = 20
-
-/** Point spacing at the lowest possible graph size (SPACING_SCALE_REFERENCE_NODE_COUNT) — the
- * anchor every other level's spacing scales up from. */
-const SPACING_AT_LEVEL_7 = 21
-/** The nodeCount spacingScaleForNodeCount is anchored to 1x at — matches useProgressionStore's
- * STARTING_GRAPH_NODE_COUNT, the smallest graph that's ever generated. Written as a literal
- * rather than imported, to avoid a store → game-logic import direction reversal; keep this in
- * sync if STARTING_GRAPH_NODE_COUNT ever changes. */
-const SPACING_SCALE_REFERENCE_NODE_COUNT = 7
-/** Poisson-disk sampling undershoots perfect hex-packing density; this is an empirical fudge factor so the generated canvas actually fits close to nodeCount points without excessive retries. */
-const PACKING_DENSITY = 0.75
-const ASPECT_RATIO = 4 / 3
-const MAX_SAMPLE_ATTEMPTS = 6
-
-/** How many multiples of the level-7 spacing this graph's nodeCount gets — grows with the
- * square root of nodeCount so area (which scales with spacing²) grows roughly linearly with
- * node count, uncapped so distances keep scaling at every level, not just early ones. Since
- * edge weight is real distance, this is what makes early (small) graphs faster to cross and
- * later (big) graphs slower, proportional to level. */
-function spacingScaleForNodeCount(nodeCount: number): number {
-  return Math.sqrt(nodeCount / SPACING_SCALE_REFERENCE_NODE_COUNT)
+/** How many multiples of the reference spacing this graph's nodeCount gets, uncapped so distances
+ * keep scaling at every level, not just early ones. Since edge weight is real distance, this is
+ * what makes early (small) graphs faster to cross and later (big) graphs slower, proportional to
+ * level — see graph.spacingScaleExponent for why that growth is super-linear in nodeCount, and
+ * graph.spacingLateKneeNodeCount for the second, steeper late-game regime (continuous at the knee). */
+function spacingScaleForNodeCount(nodeCount: number, config: GameConfig): number {
+  const base = (nodeCount / config.progression.startingGraphNodeCount) ** config.graph.spacingScaleExponent
+  const late = Math.max(1, nodeCount / config.graph.spacingLateKneeNodeCount) ** config.graph.spacingLateExtraExponent
+  return base * late
 }
 
 interface PlanarEdgeCandidate {
@@ -57,15 +40,15 @@ function shuffle<T>(items: T[], rng: Rng): void {
 }
 
 /** Samples roughly nodeCount points at the given spacing, growing the canvas and retrying if the first attempt falls short, then trims (or — vanishingly rarely — pads) to exactly nodeCount. */
-function samplePointsForCount(nodeCount: number, spacing: number, rng: Rng): Point[] {
+function samplePointsForCount(nodeCount: number, spacing: number, rng: Rng, config: GameConfig): Point[] {
   let width = 0
   let height = 0
   let points: Point[] = []
 
-  for (let attempt = 0; attempt < MAX_SAMPLE_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < config.graph.maxSampleAttempts; attempt++) {
     const growth = 1 + attempt * 0.35
-    const area = ((nodeCount * spacing * spacing) / PACKING_DENSITY) * growth
-    width = Math.sqrt(area * ASPECT_RATIO)
+    const area = ((nodeCount * spacing * spacing) / config.graph.packingDensity) * growth
+    width = Math.sqrt(area * config.graph.aspectRatio)
     height = area / width
     points = samplePoissonDisk(width, height, spacing, rng)
     if (points.length >= nodeCount) break
@@ -74,7 +57,7 @@ function samplePointsForCount(nodeCount: number, spacing: number, rng: Rng): Poi
   shuffle(points, rng)
   if (points.length >= nodeCount) return points.slice(0, nodeCount)
 
-  // Only reachable if MAX_SAMPLE_ATTEMPTS' growth still wasn't enough — pad with plain uniform
+  // Only reachable if maxSampleAttempts' growth still wasn't enough — pad with plain uniform
   // points rather than fail outright; these won't respect minDistance, but that's an extreme
   // edge case (very small canvas, very high spacing) rather than the normal path.
   while (points.length < nodeCount) {
@@ -128,12 +111,12 @@ function computeBounds(points: Point[]): { width: number; height: number } {
  * edge length derived from it) sees only the final warped positions — nothing downstream needs to
  * know this step happened.
  */
-function warpPoints(points: Point[], width: number, height: number, rng: Rng): void {
-  const falloffRadius = width * WARP_FALLOFF_RATIO
-  const attractors = Array.from({ length: WARP_ATTRACTOR_COUNT }, () => ({
+function warpPoints(points: Point[], width: number, height: number, rng: Rng, config: GameConfig): void {
+  const falloffRadius = width * config.graph.warpFalloffRatio
+  const attractors = Array.from({ length: config.graph.warpAttractorCount }, () => ({
     x: rng() * width,
     y: rng() * height,
-    strength: (rng() * 2 - 1) * WARP_STRENGTH,
+    strength: (rng() * 2 - 1) * config.graph.warpStrength,
   }))
 
   for (const p of points) {
@@ -152,13 +135,6 @@ function warpPoints(points: Point[], width: number, height: number, rng: Rng): v
   }
 }
 
-/** How many relaxation passes resolveOverlaps runs. Resolving one too-close pair can nudge it
- * into violating the minimum distance with a third point, so convergence on a crowded cluster
- * takes more than a couple of passes — empirically, measured minimum spacing across many seeds
- * stays at or just above the generator's true minimum from nodeCount 7 up through the 20s only
- * once this is in the twenties; still negligible cost since generation runs once per level. */
-const OVERLAP_RESOLVE_ITERATIONS = 24
-
 /**
  * warpPoints can drag points closer together than the Poisson-disk minimum spacing it ran after
  * (nothing about the attractor pull respects that invariant) — with few points, one strong
@@ -166,8 +142,11 @@ const OVERLAP_RESOLVE_ITERATIONS = 24
  * actually ended up too close, leaving everything already compliant (including the density
  * variation warping is meant to produce) untouched.
  */
-function resolveOverlaps(points: Point[], minDistance: number, rng: Rng): void {
-  for (let iter = 0; iter < OVERLAP_RESOLVE_ITERATIONS; iter++) {
+function resolveOverlaps(points: Point[], minDistance: number, rng: Rng, config: GameConfig): void {
+  // Resolving one too-close pair can nudge it into violating the minimum distance with a third
+  // point, so convergence on a crowded cluster takes more than a couple of passes — hence
+  // overlapResolveIterations in the twenties; still negligible cost, generation runs once per level.
+  for (let iter = 0; iter < config.graph.overlapResolveIterations; iter++) {
     for (let i = 0; i < points.length; i++) {
       for (let j = i + 1; j < points.length; j++) {
         let dx = points[j].x - points[i].x
@@ -222,16 +201,16 @@ function findFarthestNode(from: NodeId, adjacency: Record<NodeId, NodeId[]>): No
  * long-range "shortcut" edge the way a uniformly-random pair could. Positions are final immediately
  * — there's no separate force-layout pass afterward, unlike the graph this replaced.
  */
-export function generatePlanarGraph(nodeCount: number, rng: Rng = Math.random, clarityEnabled = false): Graph {
+export function generatePlanarGraph(nodeCount: number, rng: Rng = Math.random, config: GameConfig = PRODUCTION_CONFIG): Graph {
   if (nodeCount < 2) {
     throw new Error('generatePlanarGraph requires at least 2 nodes')
   }
 
-  const spacing = SPACING_AT_LEVEL_7 * spacingScaleForNodeCount(nodeCount) * (clarityEnabled ? CLARITY_SPACING_MULTIPLIER : 1)
-  const points = samplePointsForCount(nodeCount, spacing, rng)
+  const spacing = config.graph.spacingAtReferenceCount * spacingScaleForNodeCount(nodeCount, config)
+  const points = samplePointsForCount(nodeCount, spacing, rng, config)
   const bounds = computeBounds(points)
-  warpPoints(points, bounds.width, bounds.height, rng)
-  resolveOverlaps(points, spacing, rng)
+  warpPoints(points, bounds.width, bounds.height, rng, config)
+  resolveOverlaps(points, spacing, rng, config)
 
   const delaunay = Delaunay.from(
     points,
@@ -279,7 +258,7 @@ export function generatePlanarGraph(nodeCount: number, rng: Rng = Math.random, c
     }
   }
 
-  const extraEdgeCount = Math.round(nodeCount * EXTRA_EDGE_RATIO)
+  const extraEdgeCount = Math.round(nodeCount * config.graph.extraEdgeRatio)
   shuffle(remainingEdges, rng)
   for (const edge of remainingEdges.slice(0, extraEdgeCount)) {
     connect(edge.a, edge.b)
